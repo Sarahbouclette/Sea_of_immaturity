@@ -52,10 +52,29 @@ Lengths_Chen <- read.csv(file = here::here("Documents","Sea_of_immaturity","data
 Lengths_Pauly <- read.csv(file = here::here("Documents","Sea_of_immaturity","data","raw_data", "Lm_Lmax_chu_Pauly2021.csv"))
 
 # LengthMax given by Jessica
-Lengths_Jessica <- read.xlsx(here::here("Documents","Sea_of_immaturity","data","raw_data", "BRUVS taxa list 2025_01_6.xlsx"), sheet = 3)
+Lengths_Jessica <- read_xlsx(here::here("Documents","Sea_of_immaturity","data","raw_data", "BRUVS taxa list 2025_01_6.xlsx"), sheet = 3)
 
 # Other traits given by Jessica
-Other_traits_Jessica <- read.xlsx(here::here("Documents","Sea_of_immaturity","data","raw_data", "BRUVS taxa list 2025_01_6.xlsx"), sheet = 2)
+Other_traits_Jessica <- read_xlsx(here::here("Documents","Sea_of_immaturity","data","raw_data", "BRUVS taxa list 2025_01_6.xlsx"), sheet = 2)
+
+# Traits by Tsikliras
+Lengths_Tsikliras <- read.csv(file = here::here("Documents","Sea_of_immaturity","data","raw_data", "Length_at_maturity_Tsikliras.csv"))
+
+# Fonction pour nettoyer les valeurs numériques
+clean_numeric_column <- function(col) {
+  if (is.list(col)) {
+    sapply(col, function(x) mean(as.numeric(x), na.rm = TRUE))
+  } else {
+    sapply(col, function(x) {
+      x <- as.character(x)
+      if (grepl(",", x, fixed = TRUE)) {
+        mean(as.numeric(unlist(strsplit(x, ","))), na.rm = TRUE)
+      } else {
+        as.numeric(x)
+      }
+    })
+  }
+}
 
 ##-------------trophic guild -------------
 sp_troph <- trophic_guilds$species
@@ -180,35 +199,45 @@ Lengths_Chen <- Lengths_Chen %>%
   dplyr::select(Scientific.name, Sex, Lm..mm., Lmax..mm., Wmax..g.) %>%
   dplyr::rename(species_name = Scientific.name, LengthMatMin = Lm..mm., LengthMax = Lmax..mm., WeightMax = Wmax..g.)
 
-Lengths_Chen[Lengths_Chen$Sex%in%c('U/M'),]$Sex <-'unsexed'
-Lengths_Chen[Lengths_Chen$Sex%in%c('F'),]$Sex <-'female'
-Lengths_Chen[Lengths_Chen$Sex%in%c('M'),]$Sex <-'male'
+Lengths_Chen$LengthMax <- abs(Lengths_Chen$LengthMax)
 
-  Lengths_Chen <- Lengths_Chen %>%
-    # Pivot pour transformer les sexes en colonnes distinctes
-    pivot_wider(
-      names_from = Sex,
-      values_from = LengthMatMin,
-      names_prefix = "LengthMatMin_"
-    ) %>%
-    # Identifier les colonnes qui contiennent des listes et les traiter
-    mutate(across(starts_with("LengthMatMin_"), ~ {
-      if (is.list(.)) {
-        # Si la colonne est une list-col, calculer la moyenne pour chaque cellule
-        sapply(., function(x) mean(as.numeric(x), na.rm = TRUE))
-      } else if (grepl(",", as.character(.), fixed = TRUE)) {
-        # Si les valeurs sont des chaînes de caractères séparées par des virgules, les convertir en liste
-        mean(as.numeric(strsplit(as.character(.), ",")[[1]]), na.rm = TRUE)
-      } else {
-        .  # Sinon, garder la valeur d'origine
-      }
-    })) %>%
-    # Identifier et résoudre les doublons dans les colonnes pivotées
-    group_by(species_name) %>%
-    summarise(across(starts_with("LengthMatMin_"), ~ mean(., na.rm = TRUE)), .groups = "drop")
-
+# Harmoniser les valeurs de la colonne Sex
 Lengths_Chen <- Lengths_Chen %>%
-  dplyr::mutate(across(where(is.numeric), ~ na_if(., NaN)))
+  mutate(Sex = case_when(
+    Sex %in% c('U/M', 'U') ~ 'unsexed',
+    Sex == 'F' ~ 'female',
+    Sex == 'M' ~ 'male',
+    TRUE ~ Sex  # Conserver les valeurs inchangées si non listées
+  ))
+
+# Pivot des longueurs
+Lengths_Chen_pivot1 <- Lengths_Chen %>%
+  pivot_wider(
+    names_from = Sex,
+    values_from = LengthMatMin,
+    names_prefix = "LengthMatMin_"
+  )%>%
+  mutate(across(starts_with("LengthMatMin_"), clean_numeric_column)) %>%
+  group_by(species_name) %>%   summarise(across(starts_with("LengthMatMin_"), ~ mean(., na.rm = TRUE)),
+  .groups = "drop") %>%
+  mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
+  
+Lengths_Chen_pivot2 <- Lengths_Chen %>%
+  pivot_wider(
+    names_from = Sex,
+    values_from = LengthMax,
+    names_prefix = "LengthMax_"
+  ) %>%
+  mutate(across(starts_with("LengthMax_"), clean_numeric_column)) %>%
+  group_by(species_name) %>%
+  summarise(across(starts_with("LengthMax_"), ~ mean(., na.rm = TRUE)), 
+            .groups = "drop") %>%
+  mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
+
+Lengths_Chen_final<-left_join(Lengths_Chen_pivot1, Lengths_Chen_pivot2, by = 'species_name')
+
+
+
 
 ##-------------Clean Lengths from Chu et Pauly 2021---------------
 
@@ -216,28 +245,92 @@ Lengths_Pauly <- Lengths_Pauly %>%
   dplyr::select(Species, Sex, Lm..cm., Lmax..cm., Wmax..g.) %>%
   dplyr::rename(species_name = Species, LengthMatMin = Lm..cm., LengthMax = Lmax..cm., WeightMax = Wmax..g.)
 
-Lengths_Pauly[Lengths_Pauly$Sex%in%c('U', 'UI'),]$Sex <-'unsexed'
-Lengths_Pauly[Lengths_Pauly$Sex%in%c('F'),]$Sex <-'female'
-Lengths_Pauly[Lengths_Pauly$Sex%in%c('M'),]$Sex <-'male'
 
 Lengths_Pauly <- Lengths_Pauly %>%
-  # Pivot pour transformer les sexes en colonnes distinctes
+  mutate(Sex = case_when(
+    Sex %in% c('U', 'UI') ~ 'unsexed',
+    Sex == 'F' ~ 'female',
+    Sex == 'M' ~ 'male',
+    TRUE ~ Sex  # Conserver les valeurs inchangées si non listées
+  ))
+
+# Pivot des longueurs
+Lengths_Pauly_pivot1 <- Lengths_Pauly %>%
   pivot_wider(
     names_from = Sex,
     values_from = LengthMatMin,
     names_prefix = "LengthMatMin_"
-  ) 
+  )%>%
+  mutate(across(starts_with("LengthMatMin_"), clean_numeric_column)) %>%
+  group_by(species_name) %>%   summarise(across(starts_with("LengthMatMin_"), ~ mean(., na.rm = TRUE)),
+                                         .groups = "drop") %>%
+  mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
+
+Lengths_Pauly_pivot2 <- Lengths_Pauly %>%
+  pivot_wider(
+    names_from = Sex,
+    values_from = LengthMax,
+    names_prefix = "LengthMax_"
+  ) %>%
+  mutate(across(starts_with("LengthMax_"), clean_numeric_column)) %>%
+  group_by(species_name) %>%
+  summarise(across(starts_with("LengthMax_"), ~ mean(., na.rm = TRUE)), 
+            .groups = "drop") %>%
+  mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
+
+Lengths_Pauly_final<-left_join(Lengths_Pauly_pivot1, Lengths_Pauly_pivot2, by = 'species_name')
 
 ##------------Clean Lengths given by Jessica----------------------------
 
 Lengths_Jessica <- Lengths_Jessica %>%
-  dplyr::rename(spec_code = SpecCode, species_name = Species, LengthMax_J = Length)
+  dplyr::rename(spec_code = SpecCode, species_name = Species, LengthMax_unsexed = Length)
+
+Lengths_Jessica$LengthMax_unsexed <- as.double(Lengths_Jessica$LengthMax_unsexed)
 
 ##------------Clean other traits given by Jessica------------------------
 
 Other_traits_Jessica <- Other_traits_Jessica %>%
-  dplyr::select(Taxa, `Family.+`, Group, Level, `TR.(Troph)`, PD, `VUL-F`, `VUL-C`, IUCN, a, b, FLest ) %>%
-  dplyr::rename(Family = `Family.+`, Troph = `TR.(Troph)`, PhyloDiv = PD, ForkLength = FLest, species_name = Taxa)
+  dplyr::select(Taxa, `Family +`, Group, Level, `TR (Troph)`, PD, `VUL-F`, `VUL-C`, IUCN, a, b, FLest ) %>%
+  dplyr::rename(Family = `Family +`, Troph = `TR (Troph)`, PhyloDiv = PD, ForkLength = FLest, species_name = Taxa)
+
+#-----------------Add maturity data from Tsikliras--------------------------
+
+Lengths_Tsikliras <- Lengths_Tsikliras %>%
+  rename(species_name = Species, LengthMax = Lmax, LengthMatMin = Lm) %>%
+  select(species_name, LengthMax, LengthMatMin, Sex) %>%
+  filter(Sex != "") %>%
+  mutate(species_name = sub("\\*{1,3}$", "", species_name))  # Supprimer * ou ** ou *** à la fin
+
+Lengths_Tsikliras[Lengths_Tsikliras$Sex%in%c('C', ' C', ' c'),]$Sex <-'unsexed'
+Lengths_Tsikliras[Lengths_Tsikliras$Sex%in%c('F'),]$Sex <-'female'
+Lengths_Tsikliras[Lengths_Tsikliras$Sex%in%c('M'),]$Sex <-'male'
+
+#Pivot des longueurs
+Lengths_Tsikliras_pivot1 <- Lengths_Tsikliras %>%
+  pivot_wider(
+    names_from = Sex,
+    values_from = LengthMatMin,
+    names_prefix = "LengthMatMin_"
+  )%>%
+  mutate(across(starts_with("LengthMatMin_"), clean_numeric_column)) %>%
+  group_by(species_name) %>%   summarise(across(starts_with("LengthMatMin_"), ~ mean(., na.rm = TRUE)),
+                                         .groups = "drop") %>%
+  mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
+
+Lengths_Tsikliras_pivot2 <- Lengths_Tsikliras %>%
+  pivot_wider(
+    names_from = Sex,
+    values_from = LengthMax,
+    names_prefix = "LengthMax_"
+  ) %>%
+  mutate(across(starts_with("LengthMax_"), clean_numeric_column)) %>%
+  group_by(species_name) %>%
+  summarise(across(starts_with("LengthMax_"), ~ mean(., na.rm = TRUE)), 
+            .groups = "drop") %>%
+  mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
+
+Lengths_Tsikliras_final<-left_join(Lengths_Tsikliras_pivot1, Lengths_Tsikliras_pivot2, by = 'species_name')
+
 
 ##-------------Join all the data (without dealing with names)-------------
 
@@ -247,10 +340,12 @@ other_traits_raw <- species_trophic_guild |>
   dplyr::full_join(bathymetry) |> 
   dplyr::full_join(ClimVuln) |> 
   dplyr::full_join(all_range) |>
-  dplyr::full_join(Lengths_Chen) |>
-  dplyr::full_join(Lengths_Pauly) |>
+  dplyr::full_join(Lengths_Chen_final, copy=TRUE) |>
+  dplyr::full_join(Lengths_Pauly_final, copy=TRUE) |>
   dplyr::full_join(Lengths_Jessica) |>
-  dplyr::full_join(Other_traits_Jessica)
+  dplyr::full_join(Other_traits_Jessica)|>
+  dplyr::full_join(Lengths_Tsikliras_final)
+
 
 ##-------------Save data-------------
 save(other_traits_raw, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_c_other_traits_raw.Rdata"))

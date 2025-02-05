@@ -14,7 +14,7 @@
 rm(list=ls())
 
 ##-----------------Loading packages-------------------
-pkgs <- c("here", "dplyr", "gtools")
+pkgs <- c("here", "dplyr", "gtools", "funbiogeo")
 nip <- pkgs[!(pkgs %in% installed.packages())]
 nip <- lapply(nip, install.packages, dependencies = TRUE)
 # ip   <- unlist(lapply(pkgs, require, character.only = TRUE, quietly = TRUE))
@@ -27,6 +27,10 @@ source(here::here("Documents", "Sea_of_immaturity", "R", "01_a_check_scientific_
 load(file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_b_species_traits_fishbase.Rdata"))
 load(file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_c_other_traits_raw.Rdata"))
 
+# traits obtained by Raphaël Seguin
+load(file = here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "fish_traits_RSeguin.Rdata"))
+rownames(fish_traits) <- gsub("(?<=\\w)-(?=\\w)", " ", rownames(fish_traits), perl = TRUE)
+
 
 ##-------------Deal with scientific names-------------
 
@@ -36,11 +40,12 @@ species_to_find <- other_traits_raw[is.na(other_traits_raw$spec_code),] |>
 
 # /!\ long time to run, and large RAM is needed, reduce mc.core if necessary.
 #  put mc_cores = 1 if problem with fishbase
-subset1 <- code_sp_check(species_to_find[c(1:5000),], mc_cores = 12) 
-subset2 <- code_sp_check(species_to_find[c(5001:10000),], mc_cores = 12) 
-subset3 <- code_sp_check(species_to_find[c(10001:nrow(species_to_find)),], mc_cores = 12) 
+subset1 <- code_sp_check(species_to_find[c(1:5000),], mc_cores = 4) 
+subset2 <- code_sp_check(species_to_find[c(5001:10000),], mc_cores = 8) 
+subset3 <- code_sp_check(species_to_find[c(10001:nrow(species_to_find)),], mc_cores = 4) 
 
 all_subset <- rbind(subset1, subset2, subset3)
+all_subset <- all_subset[all_subset$check==1,]
 summary(all_subset$check) #should be only 1
 NA_fishbase <- all_subset[is.na(all_subset$fishbase_name),] #Mostly non fishes -> OK
 
@@ -48,7 +53,7 @@ other_traits_large_matrix <- all_subset |>
   dplyr::select(-check) |> 
   gtools::smartbind(species_with_spec_code) 
 
-save(other_traits_large_matrix, file = here::here("data", "fishbase_data", "V0_other_traits_large_matrix.Rdata") )
+save(other_traits_large_matrix, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_other_traits_large_matrix.Rdata") )
 
 
 
@@ -62,7 +67,7 @@ other_traits_with_SpecCode <- other_traits_large_matrix |>
   dplyr::distinct() |> 
   dplyr::filter(!is.na(fishbase_name))
 
-save(other_traits_with_SpecCode, file = here::here("data", "fishbase_data", "V0_other_traits_with_spec_code.Rdata") )
+save(other_traits_with_SpecCode, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_other_traits_with_spec_code.Rdata") )
 # load( file =here::here("data", "fishbase_data", "V0_other_traits_with_spec_code.Rdata") )
 
 
@@ -95,7 +100,7 @@ other_traits <- other_traits_with_SpecCode |>
 
 
 other_traits[duplicated(other_traits$fishbase_name) | duplicated(other_traits$fishbase_name, fromLast =T),]
-#Still problem with diet
+#S till problem with diet
 other_traits$trophic_guild[other_traits$fishbase_name == "Brachygenys chrysargyreum"] <- "microinvertivore"
 
 
@@ -104,18 +109,95 @@ other_traits <- other_traits |>
   dplyr::mutate_all(~ifelse(. == "NaN", NA, .))|> #Replace NaN by NA
   dplyr::select(-species_name) |> 
   dplyr::distinct()
-  
-                                                        
-  
+
+## Taxonomy data
+
+taxonomy <- taxize::classification(species_traits$fishbase_name, db="worms")
+
+taxonomy_df <- do.call(rbind, taxonomy)
+
+
+taxo <- do.call(rbind, taxonomy) |> 
+  tibble::rownames_to_column("fishbase_name") |> 
+  dplyr::select(-id) |> 
+  dplyr::mutate(fishbase_name = gsub("\\.\\d+$", "", fishbase_name)) |> 
+  dplyr::filter(rank %in% c("Phylum", "Class", "Order", "Family", "Genus")) |> 
+  dplyr::distinct() |> 
+  tidyr::pivot_wider(names_from = "rank", values_from = "name", values_fill = NA)
+
+na <- setdiff(species_traits$fishbase_name, taxo$fishbase_name)
+taxonomy_na <- taxize::classification(na, db="gbif")
+taxonomy_na_df <- do.call(rbind, taxonomy_na) |> 
+   tibble::rownames_to_column("fishbase_name") |> 
+   dplyr::select(-id) |> 
+   dplyr::mutate(fishbase_name = gsub("\\.\\d+$", "", fishbase_name)) |> 
+   dplyr::mutate(rank = dplyr::recode(rank, phylum = "Phylum", 
+                                     cass = "Class", 
+                                     order = "Order", 
+                                     family = "Family", 
+                                     genus = "Genus" )) |>
+   dplyr::filter(rank %in% c("Phylum", "Class", "Order", "Family", "Genus")) |> 
+   dplyr::distinct() |> 
+   tidyr::pivot_wider(names_from = "rank", values_from = "name", values_fill = NA)
+
+
+taxo <- taxo |>
+  dplyr::bind_rows(taxonomy_na_df) 
+
+save(taxo, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01__species_taxonomy.Rdata"))
+# load(file = here::here("data", "derived_data", "1a_species_taxonomy.Rdata"))
+
+
+species_traits_final <- species_traits_final |> 
+  dplyr::left_join(taxo, by = "fishbase_name")
+
+
 
 
 ##-------------Merge datasets-------------
-species_traits_final <- species_traits_fishbase |> 
-  dplyr::left_join(other_traits) |> 
-  dplyr::select(-UsedforAquaculture, -head_depth_ratio, -lower_jaw_ratio,
-                -caudalpeduncle_depth_ratio, -caudalpeduncle_width_ratio,
-                -mouth_width_ratio,
-                -range_n_cells_01)
+
+library(dplyr)
+
+# Supprimer les doublons
+species_traits_fishbase <- species_traits_fishbase %>%
+  distinct(fishbase_name, .keep_all = TRUE)
+
+other_traits <- other_traits %>%
+  distinct(fishbase_name, .keep_all = TRUE)
+
+# Gérer les doublons potentiels dans other_traits
+other_traits <- other_traits %>%
+  group_by(fishbase_name) %>%
+  summarise(across(everything(), ~ paste(unique(.x[!is.na(.x)]), collapse = ", "), .names = "{.col}")) %>%
+  ungroup()
+
+# Jointure et fusion des colonnes
+merged_traits <- species_traits_fishbase %>%
+  left_join(other_traits, by = "fishbase_name") %>%
+  mutate(
+    Troph.y = as.numeric(Troph.y),
+    a.y = as.numeric(a.y),
+    b.y = as.numeric(b.y),
+    LengthMatMin_female.y = as.numeric(LengthMatMin_female.y),
+    LengthMatMin_male.y = as.numeric(LengthMatMin_male.y),
+    LengthMatMin_unsexed.y = as.numeric(LengthMatMin_unsexed.y),
+    spec_code.y = as.numeric(spec_code.y),
+    LengthMax = as.numeric(LengthMax),
+    LengthMax_J = as.numeric(LengthMax_J),
+    Troph = coalesce(Troph.x, Troph.y),
+    a = dplyr::coalesce(a.x, a.y),
+    b = dplyr::coalesce(b.x, b.y),
+    LengthMatMin_female = dplyr::coalesce(LengthMatMin_female.x, LengthMatMin_female.y),
+    LengthMatMin_male = dplyr::coalesce(LengthMatMin_male.x, LengthMatMin_male.y),
+    LengthMatMin_unsexed = dplyr::coalesce(LengthMatMin_unsexed.x, LengthMatMin_unsexed.y),
+    spec_code = dplyr::coalesce(spec_code.x, spec_code.y), 
+    LengthMax = coalesce(LengthMax_J, LengthMax), 
+    VulnerabilityClimate = dplyr::coalesce(VulnerabilityClimate, `VUL-C`)
+  ) %>%
+  select(-ends_with(".x"), -ends_with(".y"), -LengthMax_J, -`VUL-F`, -`VUL-C`, -MLengthRef, -TLObserved) # Nettoyer les colonnes intermédiaires
+
+
+species_traits_final <- merged_traits
 
 
 ##-------------Check and observe data-------------
@@ -123,7 +205,7 @@ species_traits_final <- species_traits_fishbase |>
 ## mainly for Elasmobranch (that are not taken in Loiseau's study)
 iucn <- species_traits_final |> 
   tibble::column_to_rownames("species_name") |> 
-  dplyr::select(Class, fishbase_name,
+  dplyr::select(fishbase_name,
                 iucn_inferred = IUCN_inferred_Loiseau23, 
                 iucn_redlist = IUCN_category) 
 
@@ -151,7 +233,7 @@ species_traits_final[which(grepl("Genus Species",species_traits_final$fishbase_n
 summary(species_traits_final$spec_code) #ok
 
 
-length(unique(species_traits_final$fishbase_name))# 632 -> 6 DUPLICATED NAMES IN RLS
+length(unique(species_traits_final$fishbase_name))# No duplicates
 dup_names<- species_traits_final[duplicated(species_traits_final$fishbase_name) |
                             duplicated(species_traits_final$fishbase_name, fromLast =T),]
 # FEW NAs IN DUPLICATED NAMES ARE REMAINING IN FISHBASE DATA -> FILL THESE USELESS GAPS:
@@ -173,14 +255,72 @@ library(ggplot2)
 species_traits <- dplyr::rename(species_traits_final,species = species_name)
 
 fb_plot_species_traits_completeness(species_traits)
-ggsave(plot= last_plot(), file= here::here("figures", "traits_completedness.png"), width = 15, height = 7)
+ggsave(plot= last_plot(), file= here::here("Documents","Sea_of_immaturity","figures", "traits_completedness.png"), width = 15, height = 7)
 fb_plot_number_species_by_trait(species_traits, threshold_species_proportion = 1)
-ggsave(plot= last_plot(), file= here::here("figures", "percent_species_per_traits.png"), width = 8, height = 8)
-fb_plot_trait_correlation(species_traits|>dplyr::select(species, where(is.numeric)))
-ggsave(plot= last_plot(), file= here::here("figures", "traits_correlogram.png"), width = 10, height = 10)
+ggsave(plot= last_plot(), file= here::here("Documents","Sea_of_immaturity","figures", "percent_species_per_traits.png"), width = 8, height = 8)
 
+get_column_classes <- function(data) {
+  sapply(data, class)
+}
+
+# Get rid of the columns with less than 3% completness
+species_traits <- species_traits %>%
+  select(-LengthType, -TS, -AirBreathingRef, -MonogamyType, -ParentalCareRef, -SpawnModRef, -Circadian1, -Group, -Level)
+
+# Utiliser la fonction sur ton tableau species_traits
+column_classes <- get_column_classes(species_traits)
+# Identifier les colonnes character
+char_columns <- names(species_traits)[sapply(species_traits, is.character)]
+# Vérifier si les colonnes contiennent des valeurs numériques uniquement
+potential_numeric <- c("ParentalCareQ", "head_depth_ratio", "lower_jaw_ratio", "body_depth_ratio", "body_width_ratio", "caudalpeduncle_depth_ratio", "caudalpeduncle_width_ratio", "mouth_width_ratio", "depth_min",
+                       "depth_max", "ClimVuln_SSP126", "ClimVuln_SSP585", "geographic_range_Albouy19", "range_n_cells_01", "WeightMax", "PhyloDiv", "ForkLength")
+# Mutate the columns considered
+species_traits <- species_traits %>%
+  mutate(across(all_of(potential_numeric), as.numeric))
+
+
+species_traits_clean <- species_traits |> 
+  dplyr::select(where(is.numeric)) |>   #Garder les colonnes numériques
+  dplyr::select(where(~ sum(!is.na(.)) > 0))  #Garder les colonnes avec plus d'une valeur non-NA
+
+
+species_traits_clean <- species_traits_clean |> 
+  dplyr::select(-spec_code, -HabitatsRef, -MGillnets, -ParentalCareQ, -FamCode, -GenCode, -LengthFemale, -LengthMatMin_female, -LengthMatMin_male, -LengthMatMin_unsexed, -Emblematic,
+                -Abyssopelagic) |> 
+  dplyr::mutate(species = species_traits_final$species_name) |>  # Ajout correct de la colonne species
+  dplyr::filter(rowMeans(is.na(across(where(is.numeric)))) < 0.1)  # Filtre les lignes avec < 10% de NA dans les colonnes numériques
+
+
+cor_matrix <- stats::cor(species_traits_clean[,colnames(species_traits_clean)!="species"], use='complete.obs')
+
+fb_plot_trait_correlation(species_traits_clean|>dplyr::select(species, where(is.numeric)))
+ggsave(plot= last_plot(), file= here::here("Documents", "Sea_of_immaturity", "figures", "traits_correlogram.png"), width = 10, height = 10)
+
+correlated_traits_list <- function(cor_matrix, threshold = 0.7) {
+  # Initialiser une liste vide
+  trait_corr_list <- list()
+  
+  # Récupérer les noms des traits
+  trait_names <- colnames(cor_matrix)
+  
+  # Parcourir chaque trait
+  for (i in seq_len(ncol(cor_matrix))) {
+    # Trouver les indices des traits corrélés avec le trait i
+    correlated_indices <- which(abs(cor_matrix[i, ]) > threshold & seq_len(ncol(cor_matrix)) != i)
+    
+    # Ajouter les noms des traits corrélés à la liste, si non vide
+    if (length(correlated_indices) > 0) {
+      trait_corr_list[[trait_names[i]]] <- setNames(cor_matrix[i, correlated_indices], trait_names[correlated_indices])
+    }
+  }
+  
+  return(trait_corr_list)
+}
+
+traits_correlated <- correlated_traits_list(cor_matrix, threshold = 0.8)
 
 ##-------------Save final data-------------
-save(species_traits_final, file = here::here("data", "derived_data", "1c_species_traits_final.Rdata"))
-# load( file = here::here("data", "derived_data", "1c_species_traits_final.Rdata"))
+species_traits_final<-species_traits
+save(species_traits_final, file = here::here("Documents", "Sea_of_immaturity","data", "derived_data", "01_d_species_traits_final.Rdata"))
+load( file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_species_traits_final.Rdata"))
 save(species_traits_final, file = here::here("outputs", "species_traits_BEFORE_MF.Rdata"))
