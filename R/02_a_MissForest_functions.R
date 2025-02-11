@@ -21,7 +21,7 @@
 preping_data <- function(species_traits_df){
   
   traits_data <- species_traits_df |>  
-    dplyr::select(-fishbase_name,-spec_code) |> 
+    dplyr::select(-spec_code) |> 
     tibble::column_to_rownames("species_name") |> 
     dplyr::mutate(across(where(is.character), as.factor)) 
   
@@ -62,20 +62,25 @@ preping_data <- function(species_traits_df){
     dplyr::select(-Class, -Order, -Family, -Genus) |>
     tibble::rownames_to_column("species_name")  |> 
     #long format table
-    tidyr::pivot_longer(cols = UsedforAquaculture:last_col(),
+    tidyr::pivot_longer(cols = Status:last_col(),
                         names_to = "variable",
                         values_to = "observed")
   
   ### Filtrer uniquement les variables numériques
-  var_num <- setdiff(colnames(traits_data), c(unique(traits_data_factors$variable), Dims))
-   
+  if (dim!=0) {
+    var_num <- setdiff(colnames(traits_data), c(unique(traits_data_factors$variable), Dims))
+  }
+  else {
+    var_num <- setdiff(colnames(traits_data), unique(traits_data_factors$variable)) 
+  }
+  
   traits_data_num <- traits_data |> 
     #extract only categorial variables 
     dplyr::select(all_of(var_num)) |>
     dplyr::select(-Class, -Order, -Family, -Genus) |>
     tibble::rownames_to_column("species_name")  |> 
     #long format table
-    tidyr::pivot_longer(cols = c(Length:last_col()),
+    tidyr::pivot_longer(cols = c(log_Length:last_col()),
                         names_to = "variable",
                         values_to = "observed")
   
@@ -94,7 +99,9 @@ fct_missforest_evaluation_MCA <- function(data_to_infer,
                                           model_iteration = 5,
                                           maxiter_mf = 3, #missforest parameter #10
                                           ntree_mf = 10,  #missforest parameter #100
-                                          prop_NA = 0.1) { # Proportion of NA created to evaluate the model
+                                          prop_NA = 0.2) { # Proportion of NA created to evaluate the model
+  
+  results_list <- vector("list", model_iteration) # Stocker les résultats de chaque itération
   
   for (N in 1:model_iteration) {
     message("Début de l'itération ", N)
@@ -148,7 +155,7 @@ fct_missforest_evaluation_MCA <- function(data_to_infer,
        data_withNA_factors <- data_withNA  |>
          dplyr::select(all_of(categorials)) |>
          tibble::rownames_to_column("species_name")  |> 
-         tidyr::pivot_longer(cols = c(UsedforAquaculture:last_col()),
+         tidyr::pivot_longer(cols = c(Status:last_col()),
                              names_to = "variable",
                              values_to = "obs_NA")
         
@@ -159,7 +166,7 @@ fct_missforest_evaluation_MCA <- function(data_to_infer,
        data_withNA_num <- data_withNA  |>
          dplyr::select(all_of(var_num)) |>
          tibble::rownames_to_column("species_name")  |> 
-         tidyr::pivot_longer(cols = c(Length:last_col()),
+         tidyr::pivot_longer(cols = c(log_Length:last_col()),
                              names_to = "variable",
                              values_to = "obs_NA") 
        
@@ -179,14 +186,14 @@ fct_missforest_evaluation_MCA <- function(data_to_infer,
        imputed_factors <- impute$ximp |>
          dplyr::select(all_of(categorials)) |>
          tibble::rownames_to_column("species_name") |>
-         tidyr::pivot_longer(cols = c(Usedforaquaculture:last_col()),
+         tidyr::pivot_longer(cols = c(Status:last_col()),
                              names_to = "variable",
                              values_to = "imputed")
        
        imputed_num <- impute$ximp |>
          dplyr::select(all_of(var_num)) |>
          tibble::rownames_to_column("species_name") |>
-         tidyr::pivot_longer(cols = c(Length:last_col()),
+         tidyr::pivot_longer(cols = c(log_Length:last_col()),
                              names_to = "variable",
                              values_to = "imputed")
        
@@ -205,17 +212,18 @@ fct_missforest_evaluation_MCA <- function(data_to_infer,
          dplyr::mutate(missForest = N) |>
          dplyr::filter(is.na(obs_NA) & !is.na(observed))
        
-       result <- list(eval_factors, eval_num)
-       return(result)
+       list(eval_factors, eval_num)
+       
+     }, error = function(e) {
+       message("Erreur à l'itération ", N, ": ", e$message)
+       return(NULL)
      })
-    }
-  ## END OF MCLAPPLY ON MISSFOREST
-    
-    model_eval_missforest 
-  } ## END OF fct_missforest_evaluation_MCA
-
-## END OF MCLAPPLY ON MISSFOREST
+     
+     results_list[[N]] <- result
+  }
   
+  return(results_list)
+}
 
 
 
@@ -247,15 +255,15 @@ missforest_applied <- function(data_to_infer,
                                factor_length,
                                traits_data_factors,
                                traits_data_num,
-                               var_to_infer= c("Length", "K", "IUCN_category", "trophic_guild"),
+                               var_to_infer = c("Length", "K", "IUCN_category", "trophic_guild"),
                                confidence_threshold = 0.8,
                                model_iteration = 2,
-                               maxiter_mf=1, # missForest parameter
-                               ntree_mf=10) { # missForest parameter
+                               maxiter_mf = 1, # missForest parameter
+                               ntree_mf = 10) { # missForest parameter
   
-  res_missforest <- list()  # Stocker les résultats de chaque itération
+  res_missforest <- vector("list", model_iteration)  # Stocker les résultats de chaque itération
   
-  for (N in 1:model_iteration) {
+  for (N in seq_len(model_iteration)) {
     message("Début de l'itération ", N)
     
     result <- tryCatch({
@@ -276,7 +284,7 @@ missforest_applied <- function(data_to_infer,
         tibble::rownames_to_column("species_name") %>% 
         tidyr::pivot_longer(cols = -species_name,
                             names_to = "variable",
-                            values_to = "imputed")
+                            values_to = paste0("imputed_", N))
       
       var_num <- setdiff(colnames(impute$ximp), c(unique(imputed_factors$variable), Dims))
       
@@ -285,7 +293,7 @@ missforest_applied <- function(data_to_infer,
         tibble::rownames_to_column("species_name") %>% 
         tidyr::pivot_longer(cols = -species_name,
                             names_to = "variable",
-                            values_to = "imputed") 
+                            values_to = paste0("imputed_", N))
       
       ## Évaluation des facteurs imputés ##
       eval_factors <- traits_data_factors %>%
@@ -299,7 +307,7 @@ missforest_applied <- function(data_to_infer,
         dplyr::filter(is.na(observed) & variable %in% var_to_infer) %>%
         dplyr::select(-observed)
       
-      return(list(eval_factors, eval_num))
+      list(eval_factors = eval_factors, eval_num = eval_num)
       
     }, error = function(e) {
       message("Erreur lors de l'itération ", N, ": ", e$message)
@@ -307,51 +315,51 @@ missforest_applied <- function(data_to_infer,
     })
     
     res_missforest[[N]] <- result
-  }  ## Fin de la boucle for
-  
-  ## Sauvegarde des résultats ##
-  save(res_missforest, file = here::here("Documents", "Sea_of_immaturity","outputs", "Missforest_application_raw_results.Rdata"))
-  
-  ## Extraction des données imputées ##
-  flat_list <- unlist(res_missforest, recursive = FALSE)
-  
-  estimates_factors <- flat_list[[1]]
-  for (i in seq(3, length(flat_list), 2)) {
-    estimates_factors <- dplyr::left_join(estimates_factors, flat_list[[i]],
-                                          by = c("species_name", "variable"),
-                                          suffix = c("", paste0(".", i)))
   }
   
-  estimates_num <- flat_list[[2]]
-  for (i in seq(4, length(flat_list), 2)) {
-    estimates_num <- dplyr::left_join(estimates_num, flat_list[[i]],
-                                      by = c("species_name", "variable"),
-                                      suffix = c("", paste0(".", i)))
+  ## Vérification des résultats
+  if (all(sapply(res_missforest, is.null))) {
+    stop("Toutes les itérations ont échoué, vérifiez les erreurs.")
   }
   
-  ## Confiance des imputations MissForest ##
+  ## Sauvegarde des résultats
+  save(res_missforest, file = here::here("Documents", "Sea_of_immaturity", "outputs", "Missforest_application_raw_results.Rdata"))
+  
+  ## Extraction des données imputées
+  estimates_factors <- Reduce(function(x, y) left_join(x, y, by = c("species_name", "variable")),
+                              lapply(res_missforest, `[[`, "eval_factors"))
+  estimates_num <- Reduce(function(x, y) left_join(x, y, by = c("species_name", "variable")),
+                          lapply(res_missforest, `[[`, "eval_num"))
+  
+  ## Confiance des imputations MissForest
   # Facteurs
-  imputed_factors_values <- estimates_factors[, grep("imputed", colnames(estimates_factors))]
+  imputed_factors_values <- estimates_factors %>%
+    select(starts_with("imputed_"))
+  
   norm_factors <- apply(imputed_factors_values, 1, function(x) names(which.max(table(x))))
   agreement_factors <- apply(imputed_factors_values, 1, function(x) mean(x == names(which.max(table(x)))))
   
   final_estimation_factors <- estimates_factors %>%
-    dplyr::mutate(norm = norm_factors, confidence = agreement_factors) %>%
-    dplyr::select(-grep("imputed", colnames(estimates_factors)))
+    mutate(norm = norm_factors, confidence = agreement_factors) %>%
+    select(-starts_with("imputed_"))
   
   # Numériques
-  imputed_num_values <- estimates_num[, grep("imputed", colnames(estimates_num))]
+  imputed_num_values <- estimates_num %>%
+    select(starts_with("imputed_"))
+  
   median_num <- apply(imputed_num_values, 1, median)
   deviation_num <- apply(imputed_num_values, 1, function(x) 1 - sd(x) / mean(x))  # 1 - Coeff Variation
   
   final_estimation_num <- estimates_num %>%
-    dplyr::mutate(norm = median_num, confidence = deviation_num) %>%
-    dplyr::select(-grep("imputed", colnames(estimates_num)))
+    mutate(norm = median_num, confidence = deviation_num) %>%
+    select(-starts_with("imputed_")) %>%
+    mutate(norm = as.character(norm))
   
-  ## Intégration dans les données initiales ##
-  final_imputation <- rbind(final_estimation_factors, final_estimation_num)
+  ## Intégration dans les données initiales
+  final_imputation <- bind_rows(final_estimation_factors, final_estimation_num)
   infered_data <- data_to_infer %>%
-    dplyr::select(-any_of(Dims))  # Suppression des dimensions pour éviter les conflits
+    select(-any_of(Dims)) %>% # Suppression des dimensions pour éviter les conflits
+    mutate(species_name = rownames(data_to_infer))
   
   for (i in seq_len(nrow(final_imputation))) {
     if (final_imputation$confidence[i] > confidence_threshold) {
@@ -362,7 +370,7 @@ missforest_applied <- function(data_to_infer,
   }
   
   infered_data <- infered_data %>%
-    dplyr::mutate(across(where(is.character), as.numeric))
+    mutate(across(where(is.character), as.numeric))
   
   return(infered_data)
 }

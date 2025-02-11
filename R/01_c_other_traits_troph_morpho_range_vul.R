@@ -235,8 +235,7 @@ Lengths_Chen_pivot2 <- Lengths_Chen %>%
   mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
 
 Lengths_Chen_final<-left_join(Lengths_Chen_pivot1, Lengths_Chen_pivot2, by = 'species_name')
-
-
+#save(Lengths_Chen_final, file = here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "Lengths_Chen_bysex.Rdata"))
 
 
 ##-------------Clean Lengths from Chu et Pauly 2021---------------
@@ -279,6 +278,7 @@ Lengths_Pauly_pivot2 <- Lengths_Pauly %>%
   mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
 
 Lengths_Pauly_final<-left_join(Lengths_Pauly_pivot1, Lengths_Pauly_pivot2, by = 'species_name')
+#save(Lengths_Pauly_final, file = here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "Lengths_Pauly_bysex.Rdata"))
 
 ##------------Clean Lengths given by Jessica----------------------------
 
@@ -330,7 +330,7 @@ Lengths_Tsikliras_pivot2 <- Lengths_Tsikliras %>%
   mutate(across(where(is.numeric), ~ na_if(., NaN)))  # Remplacer NaN par NA
 
 Lengths_Tsikliras_final<-left_join(Lengths_Tsikliras_pivot1, Lengths_Tsikliras_pivot2, by = 'species_name')
-
+#save(Lengths_Tsikliras_final, file = here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "Lengths_Tsikliras_bysex.Rdata"))
 
 ##-------------Join all the data (without dealing with names)-------------
 

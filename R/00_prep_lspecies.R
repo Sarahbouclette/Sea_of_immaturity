@@ -1,6 +1,6 @@
 library(openxlsx)
 
-path = ("~/Documents/Sea_of_immaturity/data")
+path = ("~/Documents/Sea_of_immaturity/data/raw_data")
 
 #Taxa from BRUVS program
 
@@ -42,3 +42,5 @@ prep_lspecies <- function(list1, list2, output_file = "~/Documents/Sea_of_immatu
   # Return the merged list
   return(merged_list)
 }
+
+

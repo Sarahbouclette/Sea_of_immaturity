@@ -12,26 +12,9 @@ library(funbiogeo)
 library(ggplot2)
 
 ##-------------loading data and functions-------------
-# species traits #
-load(file = here::here("Documents", "Sea_of_immaturity","outputs", "species_traits_imputed.Rdata"))
+# species traits 
+load(file = here::here("Documents", "Sea_of_immaturity","outputs", "MF2_species_traits_imputed.Rdata"))
 load(file = here::here("Documents", "Sea_of_immaturity","data", "derived_data", "01_d_species_traits_final.Rdata"))
-
-# Functions to filter and clean the traits
-
-filter_na_columns <- function(data, na_threshold = 0.1) {
-  # Calcul du pourcentage de NA par colonne
-  na_percent <- colMeans(is.na(data))
-  
-  # Sélectionner les colonnes avec un taux de NA inférieur au seuil
-  filtered_data <- data[, na_percent < na_threshold]
-  
-  return(filtered_data)
-}
-
-replace_empty_null_with_na <- function(data) {
-  data[is.null(data) | data == "" | trimws(data) == ""] <- NA
-  return(data)
-}
 
 ##-----------1.Preparing data and selection of explicative variables------------
 
@@ -57,14 +40,14 @@ Dims <- colnames(traits_and_phylo[,1:4])
 traits_and_phylo <- traits_and_phylo %>%
   select(species_name, LengthMatMin_unsexed, all_of(Dims))
 
-species_traits_imputed <- species_traits_imputed %>%
-  rename(species_name = species)
+#species_traits_imputed <- species_traits_imputed %>%
+  #rename(species_name = species)
 
 data_rf <- species_traits_imputed %>%
   left_join(traits_and_phylo, by = "species_name")
 
 # Liste des prédicteurs potentiels basés sur des connaissances écologiques
-selected_traits <- c("Length", "Troph", "TempPrefMean", "Climate", "trophic_guild", 'K', "Vulnerability_fishing", "IUCN_inferred_Loiseau23")
+selected_traits <- c("Length", "Troph", "TempPrefMean", "Climate", 'K', "Vulnerability_fishing", "IUCN_inferred_Loiseau23", "TempPrefM","TempPrefMin", "LengthMax_unsexed", "Status", "DemersPelag")
 
 # Filtrer les données sans valeurs manquantes pour l’entraînement
 data_rf_known <- data_rf |>
@@ -86,34 +69,21 @@ rfe_result <- rfe(data_rf_known %>% select(-LengthMatMin_unsexed, -all_of(var_ph
 best_vars <- predictors(rfe_result)  # Variables retenues par RFE
 print(best_vars)
 
-##--------3.Division en set d'entraînement (80%) et set de test (20%)--------
+#best_vars <- c("Length", "Troph", "TempPrefMean", "Climate", 'K', "Vulnerability_fishing", "IUCN_inferred_Loiseau23", "TempPrefM","TempPrefMin", "LengthMax_unsexed", "Status", "DemersPelag")
 
-set.seed(123) #Reproductibility
-train_index <- createDataPartition(data_rf_known$LengthMatMin_unsexed, p = 0.8, list = FALSE)
-train_data <- data_rf_known[train_index, ]
-test_data <- data_rf_known[-train_index, ]
-
-##---------------4.Training and optimization Random Forest-------------
+##---------------3.optimization Random Forest-------------
 tune_grid <- expand.grid(mtry = c(2, 5, 10),
                          splitrule = c("variance",NULL),
                          min.node.size = c(1, 5, 10))
 
-custom_metric <- function(data, lev = NULL, model = NULL) {
-  predictions <- data$pred
-  predictions <- pmin(predictions, data_rf_known$Length)  # Contraindre les valeurs
-  
-  RMSE <- sqrt(mean((data$obs - predictions)^2))  # Calcul du RMSE
-  return(c(RMSE = RMSE))
-}
-
-cv_control <- trainControl(method = "cv", number = 5, summaryFunction = custom_metric)
+cv_control <- trainControl(method = "cv", number = 5)
 
 bestTune<-data.frame(num_trees_values = c(100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000, 1050), MSE = NA, mtry = NA, splitrule=NA, min.node.size = NA)
 
 for (n in bestTune$num_trees_values) {
   rf_tuned <- train(
     LengthMatMin_unsexed ~ ., 
-    data = train_data %>% select(all_of(best_vars), LengthMatMin_unsexed),
+    data = data_rf_known %>% select(all_of(best_vars), LengthMatMin_unsexed),
     method = "ranger", 
     trControl = cv_control, 
     tuneGrid = tune_grid,
@@ -129,30 +99,116 @@ for (n in bestTune$num_trees_values) {
 
 print(rf_tuned$bestTune)  # Meilleurs paramètres trouvés
 
+# Erreur en fonction du nombre d'arbres
+plot(bestTune$num_trees_values, bestTune$MSE,
+     type='l',
+     main = "Erreur en fonction du nombre d'arbres", 
+     xlab = "Nombre d'arbres", 
+     ylab = "Erreur")
 
-rf_model <- ranger(LengthMatMin_unsexed ~ ., data = train_data %>% select(all_of(best_vars), LengthMatMin_unsexed),
-                   num.trees = 800, importance = "permutation", mtry=10, splitrule = "variance", min.node.size = 1)
+##----------------4. Training Random Forest-------------------------
 
-##-------------5. Évaluation du modèle sur le set de test--------------------
+set.seed(123)  # Reproductibilité
+num_folds <- 5  # Nombre de folds
 
-pred_test <- predict(rf_model, test_data %>% select(all_of(best_vars)))$predictions
-rmse_test <- sqrt(mean((pred_test - test_data$LengthMatMin_unsexed)^2))
-cat("Test RMSE :", rmse_test, "\n")
+folds <- createFolds(data_rf_known$LengthMatMin_unsexed, k = num_folds, list = TRUE)
 
-##-------------6. Training the model on all the known data----------------------
+all_predictions <- list()  # Stocker les prédictions par fold
+cv_metrics <- data.frame(Fold = integer(), R2 = numeric(), Type = character())  # Stocke les R²
 
-rf_final <- ranger(LengthMatMin_unsexed ~ ., data = data_rf_known %>% select(all_of(best_vars), LengthMatMin_unsexed),
-                   num.trees = 800, importance = "permutation", mtry = 10, splitrule = "variance", min.node.size = 1)
+for (i in seq_along(folds)) {
+  train_idx <- unlist(folds[-i])  # Les autres folds servent pour le train
+  test_idx <- folds[[i]]  # Le fold i sert pour le test
+  
+  train_fold <- data_rf_known[train_idx, ]
+  test_fold <- data_rf_known[test_idx, ]
+  
+  rf_model <- ranger(LengthMatMin_unsexed ~ ., 
+                     data = train_fold %>% select(all_of(best_vars), LengthMatMin_unsexed),
+                     num.trees = 500, importance = "permutation",
+                     mtry = 2, splitrule = "variance", min.node.size = 10)
+  
+  # Prédictions
+  pred_train <- predict(rf_model, train_fold %>% select(all_of(best_vars)))$predictions
+  pred_test <- predict(rf_model, test_fold %>% select(all_of(best_vars)))$predictions
+  
+  # Calcul du R² pour Train
+  ss_res_train <- sum((train_fold$LengthMatMin_unsexed - pred_train)^2)
+  ss_tot_train <- sum((train_fold$LengthMatMin_unsexed - mean(train_fold$LengthMatMin_unsexed))^2)
+  r2_train <- 1 - (ss_res_train / ss_tot_train)
+  
+  # Calcul du R² pour Test
+  ss_res_test <- sum((test_fold$LengthMatMin_unsexed - pred_test)^2)
+  ss_tot_test <- sum((test_fold$LengthMatMin_unsexed - mean(test_fold$LengthMatMin_unsexed))^2)
+  r2_test <- 1 - (ss_res_test / ss_tot_test)
+  
+  # Stockage des résultats
+  cv_metrics <- rbind(cv_metrics, 
+                      data.frame(Fold = i, R2 = r2_train, Type = "Train"),
+                      data.frame(Fold = i, R2 = r2_test, Type = "Test"))
+  
+  # Stocker les prédictions
+  all_predictions[[i]] <- list(
+    train = data.frame(Observed = train_fold$LengthMatMin_unsexed, Predicted = pred_train, Fold = i, Set = "Train"),
+    test = data.frame(Observed = test_fold$LengthMatMin_unsexed, Predicted = pred_test, Fold = i, Set = "Test")
+  )
+}
 
-##------------7. Prediction of the unkown maturity length----------------------
+# Fusionner les prédictions
+df_predictions <- do.call(rbind, lapply(all_predictions, function(x) rbind(x$train, x$test)))
 
-pred_unknown <- predict(rf_final, data_rf_unknown %>% select(all_of(best_vars)))$predictions
+# Transformer les noms des folds en facteur pour l'affichage ggplot
+cv_metrics$Fold <- as.factor(cv_metrics$Fold)
 
-##-------------8. Integration of the predictions into the initial dataset-------
+# 🔹 Création du graphique
+ggplot(cv_metrics, aes(x = Fold, y = R2, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "R² par fold (Train vs Test)", x = "Fold", y = "R²") +
+  scale_fill_manual(values = c("steelblue", "darkorange"))
+
+ggsave(file = here("Documents", "Sea_of_immaturity", "figures", "RF2_rsquared_by_fold.png"), width = 8, height = 6)
+
+df_test <- df_predictions %>% filter(Set == "Test")
+df_train <- df_predictions %>% filter(Set == "Train")
+r2_test_tot <- mean(cv_metrics[cv_metrics$Type=="Test",]$R2)
+r2_train_tot <- mean(cv_metrics[cv_metrics$Type=="Train",]$R2)
+
+# Visualisation pred train
+ggplot(df_train, aes(x = Observed, y = Predicted)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Comparaison Observed vs Predicted on the Train set", 
+       x = "Observed values", y = "Predicted values") + 
+  annotate("text", x = min(df_train$Observed), y = max(df_train$Predicted), 
+           label = paste("R² =", round(r2_train_tot, 3)), 
+           hjust = 0, size = 5, color = "blue") 
+
+# Sauvegarde du graphique
+ggsave(file = here("Documents", "Sea_of_immaturity", "figures", "RF2_regression_CV_train.png"), width = 8, height = 6)
+
+# Visualisation pred test
+ggplot(df_test, aes(x = Observed, y = Predicted)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Comparaison Observed vs Predicted on the Test set", 
+       x = "Observed values", y = "Predicted values") + 
+  annotate("text", x = min(df_test$Observed), y = max(df_test$Predicted), 
+           label = paste("R² =", round(r2_test_tot, 3)), 
+           hjust = 0, size = 5, color = "blue") 
+# Sauvegarde du graphique
+ggsave(file = here("Documents", "Sea_of_immaturity", "figures", "RF2_regression_CV_test.png"), width = 8, height = 6)
+
+
+##------------5. Prediction of the unknown maturity length----------------------
+
+pred_unknown <- predict(rf_model, data_rf_unknown %>% select(all_of(best_vars)))$predictions
+pref_unkown_filtered <- pmin(pred_unknown,  data_rf_unknown$Length)
+
+##-------------6. Integration of the predictions into the initial dataset-------
 
 data_rf_unknown$LengthMatMin_unsexed <- pred_unknown
 
-##-------------9. Plot final performances and results--------------------------
+##-------------7. Plot results preedictions--------------------------
 
 # Extraire l'importance des variables
 importance_df <- as.data.frame(rf_model$variable.importance) %>%
@@ -163,76 +219,98 @@ importance_df <- as.data.frame(rf_model$variable.importance) %>%
 ggplot(importance_df, aes(x = reorder(Variable, importance), y = importance)) +
   geom_col(fill = "steelblue") +
   coord_flip() +
-  labs(title = "Importance des variables", x = "Variable", y = "Importance") +
-  theme_minimal()
+  labs(title = "Importance des variables", x = "Variable", y = "Importance") 
 
-# Erreur en fonction du nombre d'arbres
-plot(bestTune$num_trees_values, bestTune$MSE,
-     type='l',
-     main = "Erreur en fonction du nombre d'arbres", 
-     xlab = "Nombre d'arbres", 
-     ylab = "Erreur")
-
-# Prédictions vs observations
-plot(test_data$LengthMatMin_unsexed, pred_test, 
-     xlab = "Valeurs réelles", 
-     ylab = "Valeurs prédites", 
-     main = "Prédictions vs Réel")
-abline(0, 1, col = "red", lwd = 2)
-
-# Distribution des erreurs
-errors <- test_data$LengthMatMin_unsexed - pred_test
-hist(errors, breaks = 20, main = "Distribution des erreurs", xlab = "Erreur (Réel - Prédit)")
+ggsave(plot= last_plot(), width = 8, height = 8, 
+       file= here::here("Documents", "Sea_of_immaturity", "figures","2_RF_importance_variables.png"))
 
 
 plot_predictions <- ggplot(data_rf_unknown, aes(x=LengthMatMin_unsexed)) + geom_histogram(color='red') + ggtitle('Distribution of the maturity length predicted')
 plot_observed_data <- ggplot(data_rf_known, aes(x=LengthMatMin_unsexed))+ geom_histogram(color='orange') + ggtitle('Distribution of the maturity length already observed')
 plot_lengths <- ggplot(data_rf, aes(x=Length)) + geom_histogram(color='skyblue') + ggtitle('Distribution of the lengths')
+plot_lengthsMax <-  ggplot(data_rf, aes(x=LengthMax_unsexed)) + geom_histogram(color='blue') + ggtitle('Distribution of the maximum lengths')
 
 # Distribution lengths
-ggarrange(plot_predictions, plot_observed_data, plot_lengths)
+ggpubr::ggarrange(plot_predictions, plot_observed_data, plot_lengths, plot_lengthsMax)
 summary(data_rf_known$LengthMatMin_unsexed)
 summary(data_rf_unknown$LengthMatMin_unsexed)
 summary(data_rf$Length)
 
-##-----------10. Save------------------------------------------------------
+ggsave(plot= last_plot(), width = 8, height = 8, 
+       file= here::here("Documents", "Sea_of_immaturity", "figures","2_RF_predictions_distribution.png"))
 
-##-----------11. Search for causality-----------------------------------
+##-----------8. Save------------------------------------------------------
 
-# Phylogeny clusters ?
+##-----------9. Search for causality-----------------------------------
 
-## Similarity based on maturity lengths
+library(ape)
+library(pheatmap)
+library(dplyr)
+library(vegan)
+
+## Length at maturity, phylogeny heritage ? ##
+
+##Similarity based on maturity lengths 
 pred_matrix <- as.matrix(pred_unknown)
-proximity_approx <- as.matrix(dist(pred_matrix))
-rownames(proximity_approx) <- data_rf_unknown$species_name
-colnames(proximity_approx) <- data_rf_unknown$species_name
-sim_matrix <- 1 - as.matrix(proximity_approx)
+dist_pred <- as.matrix (dist(pred_matrix))
+rownames(dist_pred) <- data_rf_unknown$species_name
+colnames(dist_pred) <- data_rf_unknown$species_name
+sim_pred <- 1 / (1 + dist_pred)
 
-pheatmap(sim_matrix, 
+pheatmap(sim_pred, 
          clustering_method = "ward.D2", 
          main = "Clustering basé sur Random Forest",
          labels_row = rownames(sim_matrix),
-         labels_col = colnames(sim_matrix),fontsize_row = 6, fontsize_col = 6)
+         labels_col = colnames(sim_matrix), 
+         fontsize_row = 6, fontsize_col = 6)
 
-hc_rf <- hclust(as.dist(sim_matrix), method = "ward.D2")
 
-# Découper en 5 clusters (modifiable selon ton besoin)
-clusters <- cutree(hc_rf, k = 5)
-
-# Associer chaque espèce à son cluster
-species_clusters <- data.frame(Species = rownames(sim_matrix), Cluster = clusters)
-print(species_clusters)
-
-## Similarity based on the phylogeny 
-
+## Similarity based on the phylogeny
 taxo_df <- data_rf_unknown %>%
-  select(all_of(var_phylo))
+  select(all_of(var_phylo)) %>%
+  na.omit()
 
-hc <- hclust(dist(1:nrow(taxo_df)), method = "average")  # Clustering basé sur l'ordre des données
-phylo_tree <- as.phylo(hc)
-plot(phylo_tree, type="cladogram")
+taxo_df$species_name <- as.factor(taxo_df$species_name)
+
+tree <- ape::as.phylo(~Class/Order/Family/Genus/species_name, data = taxo_df)
+
+# Ajouter les noms des taxons supérieurs
+tree$node.label <- unique(c(taxo_df$Class, taxo_df$Order, taxo_df$Family, taxo_df$Genus))
+
+# Affichage de l'arbre phylogénétique
+plot(tree, type = "cladogram", cex = 0.5, no.margin = TRUE, label.offset = 0.5)
+nodelabels(tree$node.label, frame = "none", cex = 0.7, col = "red")
+
+# Matrice de distances phylogénétiques
+phylo_dist <- cophenetic(tree)  
+
+# Matrice de similarité phylogénétique
+phylo_sim <- 1 / (1 + phylo_dist)
+
+# 🔹 S'assurer que les matrices ont les mêmes espèces et le même ordre
+common_species <- intersect(rownames(sim_pred), rownames(phylo_sim))
+
+sim_pred_filtered <- sim_pred[common_species, common_species]
+phylo_sim_filtered <- phylo_sim[common_species, common_species]
+
+# Vérification des dimensions
+print(dim(sim_pred_filtered))
+print(dim(phylo_sim_filtered))
+
+## Comparaison des matrices avec un test de Mantel
+mantel_test_sim <- vegan::mantel(sim_matrix_filtered, phylo_sim_filtered, method = "spearman")
+
+# Affichage des résultats
+print(mantel_test_sim)
+
+# result
+# r=0.1793
+#significance = 0.001
+
+#ccl: la prédiction de la taille à maturité avec le RF ne semble pas bien reproduire la structure phylogénétique. 
 
 
+## Correlation between LengthMatMin and Length ? ##
 
 
 

@@ -1,0 +1,227 @@
+---
+title: "Report maturity predictions"
+output: html_document
+date: "2025-02-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load data}
+library(openxlsx)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(ggVennDiagram)
+
+path = ("~/Documents/Sea_of_immaturity/data/raw_data")
+
+#Taxa from BRUVS program
+
+info_species_BRUVS <- read.xlsx(paste(path, sep= "/", "BRUVS taxa list 2025_01_6.xlsx"), sheet = 2)
+lspecies_BRUVS <- info_species_BRUVS$Taxa
+
+#Taxa from RLS program
+
+raw_data_RLS <- read.csv(paste(path, sep= "/", "RLS_raw.csv"))
+lspecies_RLS <- unique(raw_data_RLS$species_name)
+
+# Length characteristics repertoried by Chen et al. 2021
+Lengths_Chen <- read.csv(file = here::here("Documents","Sea_of_immaturity","data","raw_data", "Lm_Lmax_Chen_et_al2021.csv"))
+load(file = here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "Lengths_Chen_bysex.Rdata"))
+Lengths_Chen <- Lengths_Chen %>%
+  dplyr::select(Scientific.name, Sex, Lm..mm., Lmax..mm., Wmax..g.) %>%
+  dplyr::rename(species_name = Scientific.name, LengthMatMin = Lm..mm., LengthMax = Lmax..mm., WeightMax = Wmax..g.)
+
+Lengths_Chen$LengthMax <- abs(Lengths_Chen$LengthMax)
+
+# Harmoniser les valeurs de la colonne Sex
+Lengths_Chen <- Lengths_Chen %>%
+  mutate(Sex = case_when(
+    Sex %in% c('U/M', 'U') ~ 'unsexed',
+    Sex == 'F' ~ 'female',
+    Sex == 'M' ~ 'male',
+    TRUE ~ Sex  # Conserver les valeurs inchangées si non listées
+  ))
+
+# Length characteristics repertoried by Chu et Pauly 2021
+Lengths_Pauly <- read.csv(file = here::here("Documents","Sea_of_immaturity","data","raw_data", "Lm_Lmax_chu_Pauly2021.csv"))
+load(file = here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "Lengths_Pauly_bysex.Rdata"))
+Lengths_Pauly <- Lengths_Pauly %>%
+  dplyr::select(Species, Sex, Lm..cm., Lmax..cm., Wmax..g.) %>%
+  dplyr::rename(species_name = Species, LengthMatMin = Lm..cm., LengthMax = Lmax..cm., WeightMax = Wmax..g.)
+
+
+Lengths_Pauly <- Lengths_Pauly %>%
+  mutate(Sex = case_when(
+    Sex %in% c('U', 'UI') ~ 'unsexed',
+    Sex == 'F' ~ 'female',
+    Sex == 'M' ~ 'male',
+    TRUE ~ Sex  # Conserver les valeurs inchangées si non listées
+  ))
+
+# Traits by Tsikliras
+Lengths_Tsikliras <- read.csv(file = here::here("Documents","Sea_of_immaturity","data","raw_data", "Length_at_maturity_Tsikliras.csv"))
+load(file = here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "Lengths_Chen_bysex.Rdata"))
+Lengths_Tsikliras <- Lengths_Tsikliras %>%
+  rename(species_name = Species, LengthMax = Lmax, LengthMatMin = Lm) %>%
+  select(species_name, LengthMax, LengthMatMin, Sex) %>%
+  filter(Sex != "") %>%
+  mutate(species_name = sub("\\*{1,3}$", "", species_name))  # Supprimer * ou ** ou *** à la fin
+
+Lengths_Tsikliras[Lengths_Tsikliras$Sex%in%c('C', ' C', ' c'),]$Sex <-'unsexed'
+Lengths_Tsikliras[Lengths_Tsikliras$Sex%in%c('F'),]$Sex <-'female'
+Lengths_Tsikliras[Lengths_Tsikliras$Sex%in%c('M'),]$Sex <-'male'
+
+# Maturity data from fishbase
+load(file=here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "LengthMatMin_fishbase.Rdata"))
+
+# Species traits final
+load(file=here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_species_traits_final.Rdata"))
+
+```
+
+```{r Species to consider}
+
+lspecies_BRUVS <-  as.data.frame(lspecies_BRUVS) %>% mutate(source = "BRUVS") %>% 
+  rename(species_name = lspecies_BRUVS)
+lspecies_RLS <- as.data.frame(lspecies_RLS) %>% mutate(source = "RLS")%>% 
+  rename(species_name = lspecies_RLS)
+
+# Créer un dataframe avec toutes les espèces et leur source
+combined_species <- bind_rows(
+  data.frame(species_name = unlist(lspecies_BRUVS), source = "BRUVS"),
+  data.frame(species_name = unlist(lspecies_RLS), source = "RLS")
+)
+
+# Compter les occurrences de chaque espèce
+combined_species <- combined_species %>%
+  group_by(species_name) %>%
+  summarise(source = ifelse(n() > 1, "shared", first(source)), .groups = "drop")
+
+# Ajouter la colonne indiquant si l'espèce est concernée par le pattern d'exclusion
+exclusion_pattern <- "\\bsp(\\d+)?\\b|\\bspp\\b"
+combined_species <- combined_species %>%
+  mutate(excluded = grepl(exclusion_pattern, species_name))
+
+# Palette de couleurs personnalisée
+my_colors <- c("BRUVS" = "#0077b6",  # Bleu azur
+               "RLS" = "#f77f00",    # Orange
+               "shared" = "#90e0ef") # Bleu clair
+
+# Création du barplot
+plot1 <- ggplot(combined_species, aes(x = source, fill = source)) +
+  geom_bar() +
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5, size = 5, color = "black") +
+  facet_wrap(~excluded, labeller = as_labeller(c(`FALSE` = "Accepted", `TRUE` = "Excluded"))) +
+  scale_fill_manual(values = my_colors) +  # Appliquer la palette personnalisée
+  labs(title = "Species distribution",
+       x = "Source",
+       y = "Number of species") +
+  theme_minimal(base_size = 14) +
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "#f0f8ff"),  # Bleu très clair en fond
+    legend.position = "top",
+    legend.title = element_blank(),
+    axis.text = element_text(color = "black", size = 12),
+    axis.title = element_text(face = "bold")
+  )
+
+```
+
+```{r Characterise species}
+var_phylo <- c("Class", "Order", "Family", "Genus", "species_name")
+
+taxo_df <- species_traits_final %>%
+  select(all_of(var_phylo)) %>%
+  na.omit()
+
+taxo_df <- taxo_df %>% mutate(across(c(species_name, Genus, Family, Class, Order), as.factor))
+
+# Calcul du nombre de genres et d'espèces par famille
+family_stats <- taxo_df %>%
+  group_by(Family) %>%
+  summarise(
+    n_species = n_distinct(species_name),
+    n_genera = n_distinct(Genus)
+  )
+
+
+# Créer une table des labels
+node_labels <- family_stats %>%
+  mutate(label = paste0(Family, "\n", n_genera, " genres, ", n_species, " espèces"))
+
+# Normalisation du nombre d'espèces pour le dégradé
+family_stats$color_value <- scales::rescale(family_stats$n_species, to = c(0.2, 1))
+
+# final df for the creation of the tree
+taxo_family_df <- taxo_df %>%
+  select(Class, Order, Family) %>%
+  distinct()  # Supprime les doublons
+
+library(ggtree)
+library(ggplot2)
+library(dplyr)
+
+# Construire l'arbre phylogénétique jusqu'à la famille
+tree_family <- ape::as.phylo(~Class/Order/Family, data = taxo_family_df)
+
+# Transformer l'arbre en tibble pour ggtree
+tree_data <- as_tibble(tree_family)
+
+# Joindre les infos de taxonomie
+tree_data <- tree_data %>%
+  left_join(family_stats, by = c("label" = "Family"))  # Associer les stats aux labels
+
+# Définir la palette de couleurs en fonction du nombre d'espèces
+color_map <- setNames(scales::viridis_pal()(length(unique(tree_data$n_species))), unique(tree_data$n_species))
+
+# Afficher l'arbre avec les labels et la coloration
+p_family <- ggtree(tree_family) %<+% tree_data +  
+  geom_tiplab(aes(label = paste0(label, ",genus,",n_genera, ",sp,", n_species )), size = 1, hjust = 0) +  # Labels des familles
+  geom_text2(aes(subset = !isTip, label = label), 
+             size = 2.5, vjust = -0.3, hjust=1.5) +  # Infos sur les familles
+  geom_tree(aes(color = n_species)) +  # Coloration selon le nombre d'espèces
+  scale_color_viridis_c() +  # Dégradé de couleurs
+  theme(legend.position = "right")
+
+# Affichage
+print(p_family)
+```
+
+```{r Maturity data}
+Lengths_Chen_final <- Lengths_Chen_final |> mutate(source = "Chen")
+Lengths_Pauly_final <- Lengths_Pauly_final |> mutate(source = "Pauly")
+Lengths_Tsikliras_final <- Lengths_Tsikliras_final |> mutate(source = "Tsikliras")
+LengthMatMin_fishbase <- LengthMatMin |> mutate(source = "Fishbase") |>
+  select(-spec_code) |>
+  rename(species_name = Species)
+
+Combined_LengthsMatMin <- Lengths_Chen_final |> 
+  dplyr::full_join(Lengths_Pauly_final) |> 
+  dplyr::full_join(Lengths_Tsikliras_final) |>
+  dplyr::full_join(LengthMatMin_fishbase)
+
+Combined_LengthsMatMin_unique <- Combined_LengthsMatMin %>%
+  group_by(species_name) %>%
+  summarise(
+    source = ifelse(n() > 1, paste(unique(source), collapse = "/"), first(source)), 
+    .groups = "drop"
+  )
+
+library(ggVennDiagram)
+
+species_list <- list(
+  Chen = Combined_LengthsMatMin$species_name[Combined_LengthsMatMin$source == "Chen"],
+  Pauly = Combined_LengthsMatMin$species_name[Combined_LengthsMatMin$source == "Pauly"],
+  Tsikliras = Combined_LengthsMatMin$species_name[Combined_LengthsMatMin$source == "Tsikliras"],
+  Fishbase = Combined_LengthsMatMin$species_name[Combined_LengthsMatMin$source == "Fishbase"]
+)
+```
+
+
+

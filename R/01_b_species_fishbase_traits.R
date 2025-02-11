@@ -42,7 +42,7 @@ species_list <- code_sp_check(list_sp, mc_cores = 1) # /!\ long time to run #if 
 
 
 ##-------------Check the data-------------
-length(unique(species_list$spec_code)) # obs duplicated species in the data base
+length(unique(species_list$spec_code)) # obs duplicated species in the data base 
 duplications <- species_list[which(duplicated(species_list$spec_code)),] 
 unique(species_list$check) #should be only 1
 species_list[is.na(species_list$fishbase_name),] # No NA ?
@@ -51,7 +51,7 @@ head(species_list$spec_code[order(species_list$spec_code)])
 species_list[which(grepl("Genus Species",species_list$fishbase_name)),]
 #Check differences of naming 
 diff <- species_list[
-  which(species_list$species_name != species_list$fishbase_name),] #120 different names -> OK
+  which(species_list$species_name != species_list$fishbase_name),] #113 different names -> OK
 
 species_list <- species_list %>%
   dplyr::filter(species_name != "name_checklist") %>%
@@ -84,7 +84,7 @@ fb_traits <- data_rfishbase |>
   dplyr::distinct() |> 
   dplyr::mutate(Schooling = factor(Schooling)) |>
   dplyr::mutate(Schooling= forcats::fct_recode(Schooling,yes="-1",no="0") )
-# dplyr::rename(spec_code = SpecCode)
+  #dplyr::rename(spec_code = SpecCode)
 
 #Check extraction
 setdiff(fb_traits$SpecCode, species_list$spec_code) #OK
@@ -138,7 +138,7 @@ summary(water_pos_vuln$Vulnerability)
 ##-------------LengthMatMin-----------------------------------------------
 
 # Load the RData file with the LengthMatMin data
-loaded_objects <- load(here::here("Documents", "Sea_of_immaturity", "data", "rawdata", "LengthMatMin.Rdata"))
+loaded_objects <- load(here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "LengthMatMin.Rdata"))
 
 # Assuming the object in the RData file is named 'species_list', assign it to 'list_sp'
 LengthMatMin <- get(loaded_objects[1])
@@ -179,7 +179,7 @@ LengthMatMin <- LengthMatMin %>%
   dplyr::distinct(spec_code, .keep_all = TRUE) %>%
   dplyr::select(-Species)
 
-
+#save(LengthMatMin, file=here::here("Documents", "Sea_of_immaturity", "data", "raw_data", "LengthMatMin_fishbase.Rdata"))
 
 ##-------------IUCN status-------------
 #Here we extract all IUCN data from the redlist database. Some missing values are

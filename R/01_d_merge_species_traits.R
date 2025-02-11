@@ -40,11 +40,18 @@ species_to_find <- other_traits_raw[is.na(other_traits_raw$spec_code),] |>
 
 # /!\ long time to run, and large RAM is needed, reduce mc.core if necessary.
 #  put mc_cores = 1 if problem with fishbase
-subset1 <- code_sp_check(species_to_find[c(1:5000),], mc_cores = 4) 
+subset1 <- code_sp_check(species_to_find[c(1:5000),], mc_cores = 8)
+save(subset1, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "subset1.Rdata"))
 subset2 <- code_sp_check(species_to_find[c(5001:10000),], mc_cores = 8) 
-subset3 <- code_sp_check(species_to_find[c(10001:nrow(species_to_find)),], mc_cores = 4) 
+save(subset2, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "subset2.Rdata"))
+subset3 <- code_sp_check(species_to_find[c(10001:nrow(species_to_find)),], mc_cores = 8) 
+save(subset3, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "subset3.Rdata"))
+
 
 all_subset <- rbind(subset1, subset2, subset3)
+all_subset_delete <- all_subset[all_subset$check!=1,]
+escaped <- all_subset_delete |> 
+  dplyr::filter(if_any(dplyr::starts_with(c("LengthMatMin_", "LengthMax_")), ~ . != 0))
 all_subset <- all_subset[all_subset$check==1,]
 summary(all_subset$check) #should be only 1
 NA_fishbase <- all_subset[is.na(all_subset$fishbase_name),] #Mostly non fishes -> OK
@@ -53,19 +60,29 @@ other_traits_large_matrix <- all_subset |>
   dplyr::select(-check) |> 
   gtools::smartbind(species_with_spec_code) 
 
+other_traits_large_matrix <- other_traits_large_matrix %>%
+  dplyr::mutate(dplyr::across(c(a, b, ForkLength, `VUL-C`, `VUL-F`, PhyloDiv, Troph), as.numeric))
+
+other_traits_large_matrix[] <- lapply(other_traits_large_matrix, function(x) {
+  if (is.character(x)) return(factor(x))
+  if (is.integer(x)) return(as.numeric(x))
+  return(x)
+})  
+
+
 save(other_traits_large_matrix, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_other_traits_large_matrix.Rdata") )
+load(file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_other_traits_large_matrix.Rdata") )
 
 
-
-## Complete data for the same species (same fishbase name)
+## Complete data for the same species
 other_traits_with_SpecCode <- other_traits_large_matrix |> 
-  dplyr::group_by(fishbase_name) |> 
+  dplyr::group_by(spec_code) |> 
   tidyr::fill(tidyr::everything(), .direction = 'updown') |> #fill identical lines
-  # dplyr::mutate(across(.cols = where(is.numeric), .fns = mean, .names = "{.col}")) |> #some rows are became duplicates -> means them.
+  dplyr::mutate(across(.cols = where(is.numeric), .fns = mean, .names = "{.col}")) |> #some rows are became duplicates -> means them.
   dplyr::ungroup() |> 
   dplyr::select( -range_n_cells_005, -worms_id) |> #-ClimVuln_SSP126,
   dplyr::distinct() |> 
-  dplyr::filter(!is.na(fishbase_name))
+  dplyr::filter(!is.na(spec_code))
 
 save(other_traits_with_SpecCode, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_other_traits_with_spec_code.Rdata") )
 # load( file =here::here("data", "fishbase_data", "V0_other_traits_with_spec_code.Rdata") )
@@ -73,12 +90,12 @@ save(other_traits_with_SpecCode, file = here::here("Documents", "Sea_of_immaturi
 
 
 ## Check duplicates in names
-dup_names <- other_traits_with_SpecCode[duplicated(other_traits_with_SpecCode$fishbase_name) |
-               duplicated(other_traits_with_SpecCode$fishbase_name, fromLast =T),]
+dup_names <- other_traits_with_SpecCode[duplicated(other_traits_with_SpecCode$spec_code) |
+               duplicated(other_traits_with_SpecCode$spec_code, fromLast =T),]
 #SOME DUPLICATED SPECIES HAVE SLIGHTLY DIFFERENT VALUES IN TRAITS
 
 other_traits <- other_traits_with_SpecCode |> 
-  dplyr::group_by(fishbase_name) |> 
+  dplyr::group_by(spec_code) |> 
   # Mean the duplicated numeric traits
   dplyr::mutate(across(.cols = where(is.numeric), .fns = ~mean(., na.rm = TRUE), .names = "{.col}")) |> # Mean numeric variables
  
@@ -112,7 +129,7 @@ other_traits <- other_traits |>
 
 ## Taxonomy data
 
-taxonomy <- taxize::classification(species_traits$fishbase_name, db="worms")
+taxonomy <- taxize::classification(species_traits_fishbase$fishbase_name, db="worms")
 
 taxonomy_df <- do.call(rbind, taxonomy)
 
@@ -125,7 +142,7 @@ taxo <- do.call(rbind, taxonomy) |>
   dplyr::distinct() |> 
   tidyr::pivot_wider(names_from = "rank", values_from = "name", values_fill = NA)
 
-na <- setdiff(species_traits$fishbase_name, taxo$fishbase_name)
+na <- setdiff(species_traits_fishbase$fishbase_name, taxo$fishbase_name)
 taxonomy_na <- taxize::classification(na, db="gbif")
 taxonomy_na_df <- do.call(rbind, taxonomy_na) |> 
    tibble::rownames_to_column("fishbase_name") |> 
@@ -144,11 +161,11 @@ taxonomy_na_df <- do.call(rbind, taxonomy_na) |>
 taxo <- taxo |>
   dplyr::bind_rows(taxonomy_na_df) 
 
-save(taxo, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01__species_taxonomy.Rdata"))
-# load(file = here::here("data", "derived_data", "1a_species_taxonomy.Rdata"))
+save(taxo, file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_species_taxonomy.Rdata"))
+#load(file = here::here("Documents", "Sea_of_immaturity", "data", "derived_data", "01_d_species_taxonomy.Rdata"))
 
 
-species_traits_final <- species_traits_final |> 
+species_traits_fishbase <- species_traits_fishbase |> 
   dplyr::left_join(taxo, by = "fishbase_name")
 
 
@@ -160,44 +177,50 @@ library(dplyr)
 
 # Supprimer les doublons
 species_traits_fishbase <- species_traits_fishbase %>%
-  distinct(fishbase_name, .keep_all = TRUE)
+  distinct(spec_code, .keep_all = TRUE)
 
 other_traits <- other_traits %>%
-  distinct(fishbase_name, .keep_all = TRUE)
+  distinct(spec_code, .keep_all = TRUE)
 
 # Gérer les doublons potentiels dans other_traits
 other_traits <- other_traits %>%
-  group_by(fishbase_name) %>%
+  group_by(spec_code) %>%
   summarise(across(everything(), ~ paste(unique(.x[!is.na(.x)]), collapse = ", "), .names = "{.col}")) %>%
   ungroup()
 
 # Jointure et fusion des colonnes
 merged_traits <- species_traits_fishbase %>%
-  left_join(other_traits, by = "fishbase_name") %>%
+  left_join(other_traits, by = "spec_code") %>%
   mutate(
-    Troph.y = as.numeric(Troph.y),
-    a.y = as.numeric(a.y),
-    b.y = as.numeric(b.y),
-    LengthMatMin_female.y = as.numeric(LengthMatMin_female.y),
-    LengthMatMin_male.y = as.numeric(LengthMatMin_male.y),
-    LengthMatMin_unsexed.y = as.numeric(LengthMatMin_unsexed.y),
-    spec_code.y = as.numeric(spec_code.y),
-    LengthMax = as.numeric(LengthMax),
-    LengthMax_J = as.numeric(LengthMax_J),
+    Family = Family.x,
     Troph = coalesce(Troph.x, Troph.y),
     a = dplyr::coalesce(a.x, a.y),
     b = dplyr::coalesce(b.x, b.y),
     LengthMatMin_female = dplyr::coalesce(LengthMatMin_female.x, LengthMatMin_female.y),
     LengthMatMin_male = dplyr::coalesce(LengthMatMin_male.x, LengthMatMin_male.y),
     LengthMatMin_unsexed = dplyr::coalesce(LengthMatMin_unsexed.x, LengthMatMin_unsexed.y),
-    spec_code = dplyr::coalesce(spec_code.x, spec_code.y), 
-    LengthMax = coalesce(LengthMax_J, LengthMax), 
     VulnerabilityClimate = dplyr::coalesce(VulnerabilityClimate, `VUL-C`)
   ) %>%
-  select(-ends_with(".x"), -ends_with(".y"), -LengthMax_J, -`VUL-F`, -`VUL-C`, -MLengthRef, -TLObserved) # Nettoyer les colonnes intermédiaires
+  select(-ends_with(".x"), -ends_with(".y"), -`VUL-F`, -`VUL-C`, -MLengthRef, -TLObserved) # Nettoyer les colonnes intermédiaires
+
+fish_traits <- fish_traits %>%
+  select(Max_length, Common_length, Climate, Repro.Mode, Repro.Fertil) %>%
+  mutate(species_name = rownames(fish_traits))
+
+merged_traits_final <- merged_traits %>%
+  left_join(fish_traits, by = "species_name") %>%
+  mutate(
+    LengthMax_unsexed = coalesce(LengthMax_unsexed, Max_length),
+    Common_length = coalesce(Common_length, Length),
+    Climate = coalesce(Climate.x, Climate.y),
+    ReproMode = coalesce(ReproMode, Repro.Mode),
+    ReproFertil = Repro.Fertil
+  ) %>%
+  select(-ends_with(".x"), -ends_with(".y"), -Max_length, -Common_length, -Repro.Mode, -Repro.Fertil)
+  
 
 
-species_traits_final <- merged_traits
+species_traits_final <- merged_traits_final
 
 
 ##-------------Check and observe data-------------
@@ -205,7 +228,7 @@ species_traits_final <- merged_traits
 ## mainly for Elasmobranch (that are not taken in Loiseau's study)
 iucn <- species_traits_final |> 
   tibble::column_to_rownames("species_name") |> 
-  dplyr::select(fishbase_name,
+  dplyr::select(spec_code,
                 iucn_inferred = IUCN_inferred_Loiseau23, 
                 iucn_redlist = IUCN_category) 
 
@@ -244,7 +267,7 @@ dup_names <- dup_names |>
 
 #Same on the full dataframe:
 species_traits_final <- species_traits_final |> 
-  dplyr::group_by(fishbase_name) |> 
+  dplyr::group_by(species_name) |> 
   tidyr::fill(IUCN_category:last_col(), .direction = "downup") |> 
   dplyr::select(-trophic_guild)
 

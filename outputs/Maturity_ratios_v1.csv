@@ -1,0 +1,102 @@
+"site_code","survey_date","location","site_name","latitude","longitude","maturity_ratio"
+"FP1","2009-07-01","Society Islands","Papeete Dock",-17.54,-149.58,0.333333333333333
+"FP10","2009-07-09","Society Islands","Teavapiti Pass Sth",-16.75,-151.43,0.326086956521739
+"FP11","2009-07-10","Society Islands","Taoru Motu",-16.75,-151.42,0.392857142857143
+"FP12","2009-07-12","Society Islands","Motu Pahi (Bora Bora)",-16.44,-151.77,0.276595744680851
+"FP13","2009-07-12","Society Islands","Bora Bora Airport",-16.44,-151.76,0.305785123966942
+"FP14","2009-07-10","Society Islands","Teavapiti Pass",-16.74,-151.42,0.21875
+"FP15","2009-07-22","Society Islands","Maupihaa Inside",-16.78,-153.96,0.307692307692308
+"FP16","2009-06-15","Society Islands","Toau Bommie",-15.94,-145.91,0.426751592356688
+"FP17","2009-06-16","Society Islands","Toau Outside",-15.93,-145.88,0.3125
+"FP18","2009-06-16","Society Islands","Toau Bommie2",-15.94,-145.89,0.284090909090909
+"FP19","2009-06-18","Society Islands","Fakarava Outside",-16.07,-145.7,0.318181818181818
+"FP2","2009-07-02","Society Islands","Moorea Channel",-17.48,-149.82,0.373205741626794
+"FP20","2009-06-20","Society Islands","Fakarava Bommie",-16.08,-145.69,0.31496062992126
+"FP21","2009-06-21","Society Islands","Fakarava Outside Shallow",-16.07,-145.7,0.146341463414634
+"FP22","2009-06-24","Tuamotos","Tikehau Bommie",-15.01,-148.27,0.414285714285714
+"FP23","2012-05-13","Tuamotos","Airport Outside Sth",-23.1,-134.86,0.271929824561404
+"FP24","2012-05-13","Tuamotos","Motu Tekava",-23.16,-134.86,0.434782608695652
+"FP25","2012-05-14","Tuamotos","Motu Tekava Nth",-23.16,-134.86,0.352941176470588
+"FP26","2012-05-14","Tuamotos","Motu Tekava Sth",-23.17,-134.86,0.444444444444444
+"FP27","2012-05-15","Tuamotos","Motu Tekava Inside",-23.17,-134.86,0.358108108108108
+"FP28","2012-05-21","Tuamotos","Ile Taravai West",-23.15,-135.06,0.423423423423423
+"FP29","2012-05-24","Tuamotos","Ile Taravai East",-23.13,-135.02,0.450704225352113
+"FP3","2009-07-03","Society Islands","Passe Tareu Moorea",-17.48,-149.89,0.355769230769231
+"FP30","2012-05-24","Tuamotos","Ilot Motu-o-ari",-23.16,-135.02,0.5
+"FP31","2012-05-31","Tuamotos","Hoa Inside Beacons",-18.09,-141,0.503937007874016
+"FP32","2012-05-31","Tuamotos","Hoa Outside",-18.07,-141,0.387434554973822
+"FP33","2012-06-01","Tuamotos","Hoa Inside",-18.08,-141.01,0.273809523809524
+"FP34","2012-06-05","Tuamotos","Makemo Outside NE2",-16.62,-143.56,0.315789473684211
+"FP35","2012-06-04","Tuamotos","Makemo Outside NE",-16.62,-143.56,0.248407643312102
+"FP36","2012-06-05","Tuamotos","Makemo Outside NE 2",-16.62,-143.56,0.385869565217391
+"FP37","2012-06-04","Tuamotos","Makemo Inside Bommie",-16.63,-143.57,0.509259259259259
+"FP38","2012-06-08","Tuamotos","Makemo NW anchorage",-16.45,-143.96,0.588235294117647
+"FP39","2012-06-08","Tuamotos","Makemo Outside NW Pass",-16.44,-143.96,0.262755102040816
+"FP4","2009-07-04","Society Islands","Tiki, Moorea",-17.49,-149.92,0.319327731092437
+"FP40","2012-06-09","Tuamotos","Tahanea Outside NE",-16.86,-144.66,0.27972027972028
+"FP41","2012-06-10","Tuamotos","Tahanea Outside NE2",-16.86,-144.66,0.384408602150538
+"FP42","2012-06-10","Tuamotos","Tahanea D'Otao Pass",-16.85,-144.69,0.358208955223881
+"FP43","2012-06-12","Tuamotos","Tahanea Passe Manino Outside",-16.85,-144.69,0.374025974025974
+"FP44","2012-06-12","Tuamotos","Tahanea Inside NE",-16.85,-144.9,0.472972972972973
+"FP45","2012-06-12","Tuamotos","Tahanea Motupuapua",-16.84,-144.69,0.38622754491018
+"FP48","2012-06-17","Tuamotos","Faaite Passe Teporioha Sth",-16.7,-145.36,0.387005649717514
+"FP49","2012-06-19","Tuamotos","Fakarava Sth Cardinal",-16.51,-145.46,0.479166666666667
+"FP5","2009-07-05","Society Islands","Tetiaroa",-17,-149.59,0.331081081081081
+"FP50","2012-06-20","Tuamotos","Fakarava Sth Outside",-16.52,-145.46,0.372340425531915
+"FP51","2012-06-21","Tuamotos","Passe Tumakohua",-16.52,-145.46,0.486842105263158
+"FP52","2012-06-27","Tuamotos","Fakarava Nth Anchorage",-16.08,-145.69,0.426116838487972
+"FP53","2012-06-28","Tuamotos","Fakarava Nth Inside",-16.08,-145.7,0.313725490196078
+"FP54","2012-06-29","Tuamotos","Fakarava Nth Outside (60MLD)",-16.07,-145.7,0.397435897435897
+"FP55","2012-06-30","Tuamotos","Fakarava Nth Pass Outside",-16.08,-145.71,0.364705882352941
+"FP56","2012-07-01","Tuamotos","Toau Bommie (61MLD)",-15.94,-145.91,0.390977443609023
+"FP57","2012-07-02","Tuamotos","Toau SW Pass Outside",-15.92,-145.89,0.355263157894737
+"FP58","2012-07-04","Tuamotos","Toau Bommie 3",-15.95,-145.88,0.31496062992126
+"FP59","2012-07-05","Tuamotos","Toau Anse Amyot NE Outside",-15.8,-146.15,0.335403726708075
+"FP6","2009-07-07","Society Islands","Huahine Pass",-16.73,-150.97,0.284210526315789
+"FP60","2012-07-05","Tuamotos","Toau Yellow Dog NE Outside",-15.79,-146.14,0.39873417721519
+"FP61","2012-07-08","Tuamotos","Apatiki SE Inside",-15.56,-146.24,0.390804597701149
+"FP62","2012-07-09","Tuamotos","Apatiki Carenage Bommie",-15.55,-146.24,0.340579710144928
+"FP63","2012-04-30","Tuamotos","Pta Matu Kuiti, Ile Aukena",-23.14,-134.92,0.398058252427184
+"FP63","2012-05-01","Tuamotos","Pta Matu Kuiti, Ile Aukena",-23.14,-134.92,0.414893617021277
+"FP64","2012-05-03","Tuamotos","Ile Aukena",-23.13,-134.91,0.3
+"FP65","2012-05-01","Tuamotos","Ile Aukena Bay",-23.13,-134.9,0.362745098039216
+"FP65","2012-05-02","Tuamotos","Ile Aukena Bay",-23.13,-134.9,0.351351351351351
+"FP65","2012-05-03","Tuamotos","Ile Aukena Bay",-23.13,-134.9,0.296703296703297
+"FP66","2012-05-08","Tuamotos","Airport  Inside",-23.1,-134.87,0.235772357723577
+"FP66","2012-05-10","Tuamotos","Airport  Inside",-23.1,-134.87,0.467289719626168
+"FP67","2012-05-08","Tuamotos","Fishtrap",-23.1,-134.87,0.435483870967742
+"FP68","2012-05-09","Tuamotos","Airport Outside",-23.1,-134.87,0.211678832116788
+"FP69","2012-05-21","Tuamotos","Islots Tekoreu",-23.17,-135.05,0.46551724137931
+"FP7","2009-07-07","Society Islands","Fa'a Miti Huahine",-16.69,-151.04,0.385093167701863
+"FP70","2012-05-12","Tuamotos","Fishtrap Inside",-23.1,-134.87,0.364341085271318
+"FP8","2009-07-08","Society Islands","Passe Avapehi",-16.73,-151.05,0.303571428571429
+"FP9","2009-07-08","Society Islands","Tombant des Napoleons",-16.74,-151.42,0.358208955223881
+"MI1","2009-05-26","Marquesas","Tahuata Nth",-9.89,-139.08,0.446808510638298
+"MI2","2009-05-27","Marquesas","Hanemoenoa Bay",-9.91,-139.1,0.506493506493506
+"MI3","2009-05-30","Marquesas","Baie Hakeaotu",-9.4,-140.13,0.402985074626866
+"MI4","2009-05-30","Marquesas","Pan de Sucre",-9.4,-140.13,0.392156862745098
+"MI5","2009-05-31","Marquesas","Motumoutu",-9.41,-140.13,0.504424778761062
+"MI6","2009-06-06","Marquesas","Anse Hakatea",-8.95,-140.16,0.344086021505376
+"MI7","2009-06-08","Marquesas","Baie Haahopu",-8.83,-140.25,0.451162790697674
+"PAC1","2012-07-21","Society Islands","Moorea Baie de Cook Channel Entrance",-17.48,-149.82,0.320987654320988
+"PAC2","2012-07-22","Society Islands","Moorea Mooring Bommie",-17.49,-149.85,0.308270676691729
+"PAC3","2012-07-25","Austral Islands","Iles de Maria West Pt",-21.81,-154.73,0.175
+"PAC4","2012-07-25","Austral Islands","Iles de Maria Channel Entrance",-21.8,-154.71,0.282608695652174
+"PAC5","2012-07-26","Austral Islands","Iles de Maria North of W Pt",-21.8,-154.72,0.244541484716157
+"PAC6","2012-07-26","Austral Islands","Iles de Maria West of W Pt",-21.81,-154.73,0.240963855421687
+"PAC7","2012-07-27","Austral Islands","Iles de Maria N",-21.79,-154.7,0.241025641025641
+"PAC8","2012-07-27","Austral Islands","Iles de Maria Channel Entrance S",-21.8,-154.72,0.293398533007335
+"MED10","2011-07-13","Banyuls","Le Sphinx",42.49,3.13,0.333333333333333
+"MED11","2011-07-13","Banyuls","Sant Catherine",42.51,3.13,0.273809523809524
+"MED12","2011-07-14","Banyuls","Bernardi",42.51,3.12,0.271428571428571
+"MED13","2011-07-15","Banyuls","Anse de Peyrefite",42.46,3.16,0.46551724137931
+"MED14","2011-07-15","Banyuls","Cap l'Abeille",42.47,3.16,0.402298850574713
+"MED15","2011-07-16","Banyuls","Les Aloes",42.45,3.16,0.191176470588235
+"MED16","2011-07-16","Banyuls","Banyuls Point",42.48,3.14,0.424528301886792
+"MED17","2011-07-18","Banyuls","Cap d'Osne",42.48,3.13,0.22093023255814
+"MED18","2011-07-18","Banyuls","Cap Cerbere",42.44,3.18,0.375
+"MED20","2011-07-21","Banyuls","Cap Canadells",42.45,3.17,0.364864864864865
+"MED21","2011-07-21","Banyuls","Cap du Troc",42.48,3.15,0.357798165137615
+"MED22","2011-07-22","Banyuls","Cap de Peyrefite",42.46,3.17,0.369047619047619
+"MED23","2011-07-26","Marseilles","Cap Croisette",43.21,5.34,0.107142857142857
+"MED24","2011-07-26","Marseilles","Saména",43.23,5.35,0

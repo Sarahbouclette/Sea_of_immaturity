@@ -32,7 +32,7 @@ load(file = here::here("Documents", "Sea_of_immaturity","data", "derived_data", 
 source(here::here("Documents", "Sea_of_immaturity","R","02_a_MissForest_functions.R"))
 source(here::here("Documents", "Sea_of_immaturity","R","02_b_evaluation_prediction_model.R"))
 
-filter_na_columns <- function(data, na_threshold = 0.1) {
+filter_na_columns <- function(data, na_threshold = 0.3) {
   # Calcul du pourcentage de NA par colonne
   na_percent <- colMeans(is.na(data))
   
@@ -56,7 +56,9 @@ species_traits_final$spec_code <- as.character(species_traits_final$spec_code)
 species_traits_filtered <- filter_na_columns(species_traits_final)
 species_traits_filtered <- replace_empty_null_with_na(species_traits_filtered)
 species_traits_filtered <- species_traits_filtered %>%
-  select(-Phylum, -IUCN, -FamCode, -GenCode, -Emblematic, -LTypeMaxM, -MGillnets)
+  select(-Phylum, -FamCode, -GenCode, -Emblematic, -LTypeMaxM, -MGillnets, -geographic_range_Albouy19, -UsedforAquaculture, -Salinity, 
+         -Area, -SouthernLat, -WesternLat, -NorthernLat, -EasternLat,
+         -Aquarium, -Abyssopelagic, -AverageDepth, -ClimVuln_SSP585, -range_n_cells_01)
 
 species_traits_filtered[] <- lapply(species_traits_filtered, function(x) {
   if (is.character(x)) return(factor(x))
@@ -77,8 +79,8 @@ species_traits_final <- species_traits_final |>
 
 
 
-numeric_cols <- colnames(species_traits_final)[sapply(species_traits_final, class) == "numeric"]
-df <- tidyr::pivot_longer(species_traits_final, cols = all_of(numeric_cols) ,
+numeric_cols <- colnames(species_traits_filtered)[sapply(species_traits_filtered, class) == "numeric"]
+df <- tidyr::pivot_longer(species_traits_filtered, cols = all_of(numeric_cols) ,
                           names_to = "trait", values_to = "value") |> 
   dplyr::filter(!is.na(value))
 
@@ -93,12 +95,16 @@ ggplot(data = df)+
     axis.ticks.x=element_blank()
   )
 
-#DEPTH MIN AND DEPTH MAX + GEOGRAPHIC RANGE ARE HIGLY RIGHT-SKEWED -> LOG TRANSFORMATION
-cols <- c("depth_min", "depth_max", "geographic_range_Albouy19")
+ggsave(plot=last_plot(), here::here("Documents", "Sea_of_immaturity", "outputs", "Distribution_variables_beforeMF3.png"))
 
-species_traits_final[,cols] <- log10(species_traits_final[,cols] +1) # log10(X+1)
-colnames(species_traits_final)[colnames(species_traits_final) %in% cols] <- 
-  c("log(depth_min)", "log(depth_max)", "log(geographic_range_Albouy19)")
+#DEPTH MIN AND DEPTH MAX + GEOGRAPHIC RANGE ARE HIGLY RIGHT-SKEWED -> LOG TRANSFORMATION
+cols <- c("depth_min", "depth_max", "a", "b", "Length", "K", "LengthMax_unsexed")
+
+if (all(cols %in% colnames(species_traits_filtered))) {
+  species_traits_filtered <- species_traits_filtered %>%
+    mutate(across(all_of(cols), ~ log10(. + 1), .names = "log_{.col}")) %>%
+    select(-all_of(cols))  # Supprime les anciennes colonnes
+}
 
 
 
@@ -123,15 +129,14 @@ factoextra::fviz_eig(dimensionality, choice = "variance",
 
 
 # Choose the number of dimensions
-dimensions <- c(0,2,5,10,15,20,25,30,35,40,45,50,55,60,75,100,200,300)
-
-
+dimensions <- c(0,2,5,10,15,20,25,30,35,40,45,50,55,60,75,100,150)
 ## Run missforest for each dimension of phylogeny
 test_dimensionality <- lapply(dimensions, FUN = function(dim){
   #dim=0
   cat(dim, "dimensions:", "\n")
   
   if( dim == 0 ){
+    Dims <- paste0("Dim", 1:dim)
     
     #No phylogeny
     traits_and_phylo <- species_traits_filtered
@@ -144,6 +149,7 @@ test_dimensionality <- lapply(dimensions, FUN = function(dim){
     factor_length <- data_for_missforest[[4]]
     
   }else{
+    Dims <- paste0("Dim", 1:dim)
     
     dimensionality <- FactoMineR::MCA(phylogeny,ncp=dim, graph=F) 
     
@@ -157,7 +163,7 @@ test_dimensionality <- lapply(dimensions, FUN = function(dim){
     
     data_to_infer <- data_for_missforest[[1]]
     traits_data_factors <- data_for_missforest[[2]]
-    traits_data_num <- dplyr::select(data_for_missforest[[3]],-colnames(phylo_space))
+    traits_data_num <- data_for_missforest[[3]]
     factor_length <- data_for_missforest[[4]]
     
     
@@ -168,8 +174,8 @@ test_dimensionality <- lapply(dimensions, FUN = function(dim){
   model_eval_missforest_MCA <- fct_missforest_evaluation_MCA(
     data_to_infer, traits_data_factors = traits_data_factors,
     traits_data_num = traits_data_num, factor_length = factor_length,
-    model_iteration = 2, #100
-    maxiter_mf=10, #10
+    model_iteration = 5, #100
+    maxiter_mf=5, #10
     ntree_mf=100,  #100
     prop_NA = 0.2)
   
@@ -193,15 +199,22 @@ test_dimensionality <- lapply(dimensions, FUN = function(dim){
 # #time of computation:
 # time <- c("0 dim 04:46", "2 dim 04:31", "5 dim 03:50", "10 dim 05:44", "25 dim 04:52",
 #           "50 dim 06:16", "75 dim 07:35", "100 dim 10:05", "200 dim 13:05")
-  
-traits_performance<-extract_model_perf(test_dimensionality) 
+
+results <- data.frame()
+
+for (i in 1:18) {
+  traits_performance <- extract_model_perf(test_dimensionality[[i]])[[1]]
+  traits_performance$iteration <- i 
+  results <- bind_rows(results, traits_performance)  # Ajout correct des résultats
+}
 
 
 # Ajout de la colonne dimensions en répétant la liste sur les groupes de 24 variables
-results_dimensionality <- traits_performance |> 
-  dplyr::mutate(dimensions = rep(dimensions, each = 24)[seq_len(nrow(traits_performance))])
+results_dimensionality <- results |> 
+  dplyr::mutate(iteration = rep(dimensions, each = 20)[seq_len(nrow(results))]) |>
+  rename(dimensions = iteration)
 
-save(results_dimensionality, file = here::here("Documents", "Sea_of_immaturity", "outputs","choose_dimensionality_phylogeny_mF.Rdata"))
+save(results_dimensionality, file = here::here("Documents", "Sea_of_immaturity", "outputs","choose_dimensionality_phylogeny_mF2.Rdata"))
 
 resumed_data <- results_dimensionality |>
   dplyr::group_by(variable, dimensions) |>
@@ -225,17 +238,17 @@ ggplot(resumed_data) +
         axis.title = element_text(size = 10),
         axis.text.x = element_text(size = 10))
   
-ggsave(filename = here::here("Documents","Sea_of_immaturity","figures", "02_c_phylogeny_importance_in_MF_perf.jpg"),
+ggsave(filename = here::here("Documents","Sea_of_immaturity","figures", "02_c_phylogeny_importance_in_MF2_perf.jpg"),
        plot = last_plot(), width = 10, height =8 )
 
 
 ## Plot performance of prediction for each dimensionality ##
-dim = 35
+dim = 100
 res <- results_dimensionality |> dplyr::filter(dimensions == dim)
 # Estimate distributions (boxplot)
 boxplot_missforest <- estimates_boxplot(df_estimates = res)
 boxplot_missforest
-ggsave(filename= here::here("Documents","Sea_of_immaturity","figures", paste0("02_c_Missforest_performance_boxplot_traits_phylogeny_",dim,".jpg")),
+ggsave(filename= here::here("Documents","Sea_of_immaturity","figures", paste0("02_c_Missforest3_performance_boxplot_traits_phylogeny_",dim,".jpg")),
        boxplot_missforest, width = 12, height =8 )
 
 # # Estimate distribution (Histograms)
@@ -248,8 +261,10 @@ ggsave(filename= here::here("Documents","Sea_of_immaturity","figures", paste0("0
 ##-------------Assess error in MissForest-------------
 
 ## number of dimensions chosen 
-dim = 35
+dim = 100
 ##
+
+Dims <- paste0("Dim", 1:dim)
 
 ## Preping data
 phylogeny <- species_traits_filtered |> 
@@ -269,20 +284,20 @@ data_for_missforest <- preping_data(species_traits_df = traits_and_phylo)
 
 data_to_infer <- data_for_missforest[[1]]
 traits_data_factors <- data_for_missforest[[2]]
-traits_data_num <- dplyr::select(data_for_missforest[[3]],-colnames(phylo_space))
+traits_data_num <- data_for_missforest[[3]]
 factor_length <- data_for_missforest[[4]]
 
 
 ## Run Missforest evaluation
 model_eval_missforest_MCA <- fct_missforest_evaluation_MCA(
   data_to_infer, traits_data_factors , traits_data_num, factor_length,
-  model_iteration = 100, #100
+  model_iteration = 10, #100
   maxiter_mf=10, #10
   ntree_mf=100,  #100
   prop_NA = 0.2)
 
 
-save(model_eval_missforest_MCA, file = here::here("Documents","Sea_of_immaturity","outputs", "predictive_model_eval_species_traits.Rdata"))
+save(model_eval_missforest_MCA, file = here::here("Documents","Sea_of_immaturity","outputs", "predictive_model_eval_species_traits3.Rdata"))
 # load(file = here::here("outputs", "predictive_model_eval_species_traits.Rdata"))
 
 
@@ -298,13 +313,13 @@ raw_numeric_perf <- results[[4]]
 # Estimate distributions (boxplot)
 boxplot_missforest <- estimates_boxplot(df_estimates = traits_performance)
 boxplot_missforest
-ggsave(filename = here::here("Documents", "Sea_of_immaturity", "figures", "1_Missforest_final_performance_boxplot_traits.jpg"),
+ggsave(filename = here::here("Documents", "Sea_of_immaturity", "figures", "3_Missforest_final_performance_boxplot_traits.jpg"),
        boxplot_missforest, width = 12, height =8 )
 
 # Estimate distributions (Histograms)
 hist_missforest <- estimates_histogramm(data = traits_performance)
 hist_missforest
-ggsave(filename = here::here("Documents", "Sea_of_immaturity","figures", "1_Missforest_performance_distribution.png"),
+ggsave(filename = here::here("Documents", "Sea_of_immaturity","figures", "3_Missforest_performance_distribution.png"),
        hist_missforest, width = 22, height =14 )
 
 
@@ -314,10 +329,10 @@ ggsave(filename = here::here("Documents", "Sea_of_immaturity","figures", "1_Miss
 # var_to_infer <- c("Length", "K", "trophic_guild", "IUCN_inferred_Loiseau23", 
 #                   "ClimVuln_SSP585", "Vulnerability", "body_depth_ratio", "body_width_ratio",
 #                   "Schooling", "log(depth_min)", "log(depth_max)")
-var_to_infer <- c("K", "Length", "Vulnerability_fishing", "Troph", "trophic_guild", "TempPrefM", "TempPrefMean", "TempPrefMin", "IUCN_inferred_Loiseau23", "depth_max", "depth_min")
+var_to_infer <- c("K", "Length", "Vulnerability_fishing", "Troph", "trophic_guild", "TempPrefM", "TempPrefMean", "TempPrefMin", "IUCN_inferred_Loiseau23", "DemersPelag", "Climate", "Status", "LengthMax_unsexed")
 
 #Number of dimensions chosen 
-dim = 35
+dim = 100
 
 #Preping data
 phylogeny <- species_traits_filtered |> 
@@ -337,7 +352,7 @@ data_for_missforest <- preping_data(species_traits_df = traits_and_phylo)
 
 data_to_infer <- data_for_missforest[[1]] |> dplyr::select(-Class, -Order, -Family, -Genus)
 traits_data_factors <- data_for_missforest[[2]]
-traits_data_num <- dplyr::select(data_for_missforest[[3]],-colnames(phylo_space)[3:35])
+traits_data_num <- data_for_missforest[[3]]
 factor_length <- data_for_missforest[[4]]
 
 
@@ -350,9 +365,8 @@ inferred_data <-
     traits_data_factors,
     traits_data_num,
     var_to_infer,
-    # confidence_threshold = 0.8, #factors: proportion of consistency with the norm, 
-                                # or numeric: 1-Coefficient of variation > 0.8
-    model_iteration = 50,
+    confidence_threshold = 0.7,
+    model_iteration = 10,
     maxiter_mf=10, #missforest parameter
     ntree_mf=100) #missforest parameter
 
@@ -365,17 +379,20 @@ inferred_data_num <- inferred_data[[2]] %>%
 inferred_species_traits <- inferred_data_factors  |> 
   dplyr::left_join(inferred_data_num, by = "species_name")
 
-inferred_species_traits <- inferred_species_traits  |> 
+inferred_species_traits <- inferred_data  |> 
   dplyr::left_join( 
     dplyr::select(species_traits_filtered, 
                   species_name)) 
-#  dplyr::rename(species = "species_name")
 
+inferred_data <- inferred_data %>%
+  rename(species_name = species)
+  
+#  dplyr::rename(species = "species_name")
 # Explore data
-fb_plot_species_traits_completeness(inferred_species_traits)
-fb_plot_number_species_by_trait(inferred_species_traits, threshold_species_proportion = 1)
+fb_plot_species_traits_completeness(inferred_data)
+fb_plot_number_species_by_trait(inferred_data)
 ggsave(plot= last_plot(), width = 8, height = 8, 
-       file= here::here("Documents", "Sea_of_immaturity", "figures","1_percent_species_INFERRED.png"))
+       file= here::here("Documents", "Sea_of_immaturity", "figures","MF3_percent_species_INFERRED.png"))
 
 # #check trophic guild inference
 # df <- data.frame(troph_fishbase  = data_to_infer$Troph[which(is.na(data_to_infer$trophic_guild))],
@@ -398,34 +415,24 @@ ggsave(plot= last_plot(), width = 8, height = 8,
 
 ##-------------save data-------------
 
-save(inferred_species_traits, file= here::here("Documents", "Sea_of_immaturity", "outputs", "inferred_species_traits.Rdata"))
+save(inferred_data, file= here::here("Documents", "Sea_of_immaturity", "outputs", "MF3_inferred_species_traits.Rdata"))
 # load(file= here::here("outputs", "species_traits_inferred.Rdata"))
 write.csv(inferred_species_traits, file= here::here("outputs", "species_traits_inferred.csv"))
 
 ##------------Compare data before and after impute--------
 
 species_traits_imputed <- species_traits_filtered %>%
-  left_join(inferred_species_traits, by = "species_name") %>%
-  mutate(
-    K = coalesce(K.x, K.y),
-    Length = coalesce(Length.x, Length.y),
-    Troph = coalesce(Troph.x, Troph.y),
-    trophic_guild = coalesce(trophic_guild.x, trophic_guild.y),
-    TempPrefM = coalesce(TempPrefM.x, TempPrefM.y),
-    TempPrefMean = coalesce(TempPrefMean.x, TempPrefMean.y),
-    TempPrefMin = coalesce(TempPrefMin.x, TempPrefMin.y),
-    IUCN_inferred_Loiseau23 = coalesce(IUCN_inferred_Loiseau23.x, IUCN_inferred_Loiseau23.y),
-    depth_max = coalesce(depth_max.x, depth_max.y),
-    depth_min = coalesce(depth_min.x, depth_min.y),
-      
-  ) %>%
-  select(-ends_with(".x"), -ends_with(".y"))  # Supprimer les colonnes temporaires
+  left_join(inferred_data, by = "species_name") %>%
+  mutate(across(matches("\\.x$"), ~ coalesce(.x, get(sub(".x$", ".y", cur_column()))))) %>%
+  select(-ends_with(".y")) %>%
+  rename_with(~ sub("\\.x$", "", .), ends_with(".x"))
+
 
 species_traits_imputed <- species_traits_imputed |>
   dplyr::rename(species = "species_name")
 
 fb_plot_number_species_by_trait(species_traits_imputed, threshold_species_proportion = 1)
 
-save(species_traits_imputed, file= here::here("Documents", "Sea_of_immaturity", "outputs", "species_traits_imputed.Rdata"))
+save(species_traits_imputed, file= here::here("Documents", "Sea_of_immaturity", "outputs", "MF3_species_traits_imputed.Rdata"))
 ggsave(plot= last_plot(), width = 8, height = 8, 
        file= here::here("Documents", "Sea_of_immaturity", "figures","1_percent_species_per_trait_afterinference.png"))
