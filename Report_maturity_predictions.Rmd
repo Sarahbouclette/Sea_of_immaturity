@@ -170,6 +170,17 @@ library(dplyr)
 # Construire l'arbre phylogénétique jusqu'à la famille
 tree_family <- ape::as.phylo(~Class/Order/Family, data = taxo_family_df)
 
+# Vérifier si l'arbre est enraciné et corriger si nécessaire
+if (!is.rooted(tree_family)) {
+  tree <- root(tree_family, outgroup = tree_family$tip.label[1], resolve.root = TRUE)
+}
+tree_family <- multi2di(tree)  # Résolution des polytomies
+tree_family$node.label <- NULL  # Supprime les labels des nœuds internes
+
+# Vérifier et attribuer des longueurs de branches si absentes
+if (is.null(tree_family$edge.length)) {
+  tree_family <- compute.brlen(tree, method = "Grafen")
+}
 # Transformer l'arbre en tibble pour ggtree
 tree_data <- as_tibble(tree_family)
 
@@ -223,5 +234,54 @@ species_list <- list(
 )
 ```
 
+```{r Heatmap + phylo tree }
+# 📌 Chargement des librairies
+library(ape)
+library(ggtree)
+library(ggplot2)
+library(reshape2)
+library(dplyr)
 
+# 📌 Variables utilisées
+var_phylo <- c('Class', 'Order', 'Family', 'Genus', 'species_name')
+
+# 📌 Création de l'arbre phylogénétique
+taxo_df <- LengthMatMin_u_predicted %>%
+  na.omit() %>%
+  select(all_of(var_phylo)) 
+
+
+taxo_df$species_name <- as.factor(taxo_df$species_name)
+
+tree <- ape::as.phylo(~Class/Order/Family/Genus/species_name, data = taxo_df)
+
+# Vérifier et attribuer des longueurs de branches si absentes
+if (is.null(tree$edge.length)) {
+  tree <- compute.brlen(tree, method = "Grafen")
+}
+
+# 📌 Formatage des données pour la heatmap (wide format)
+LengthMatMin_data <- as.data.frame(LengthMatMin_u_predicted) %>%
+  na.omit() %>%
+  select(species_name, LengthMatMin_unsexed) 
+
+LengthMatMin_data <- LengthMatMin_data %>%
+  filter(species_name %in% tree$tip.label) %>%  # Garder uniquement les espèces présentes dans l'arbre
+  arrange(match(species_name, tree$tip.label))  # Ordonner les espèces selon l'arbr
+
+# Mettre les espèces en rownames pour la heatmap
+LengthMatMin_matrix <- as.matrix(LengthMatMin_data %>% select(-species_name))  
+rownames(LengthMatMin_matrix) <- LengthMatMin_data$species_name
+
+# 📌 Création du plot avec ggtree et la heatmap
+p <- ggtree(tree, layout = "circular") + 
+  geom_tiplab(size = 2, hjust = -0.1)  # Affichage des noms d'espèces
+
+p_heatmap <- gheatmap(p, LengthMatMin_matrix, offset = 0.1, width = 0.3, 
+         colnames_position = "top", colnames_angle = 45, colnames_offset_y = 0.2) + 
+  scale_fill_viridis_b()
+
+# 📌 Affichage
+print(p_heatmap)
+```
 

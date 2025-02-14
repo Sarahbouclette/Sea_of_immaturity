@@ -39,7 +39,7 @@ Dims <- colnames(traits_and_phylo[,1:4])
 # Add the already known length at maturity to the data inferred with Miss forest
 
 traits_and_phylo <- traits_and_phylo %>%
-  select(species_name, LengthMatMin_unsexed, all_of(Dims)) %>%
+  dplyr::select(species_name, LengthMatMin_unsexed, all_of(Dims)) %>%
   mutate(LengthMatMin_unsexed = log10(LengthMatMin_unsexed+1)) %>%
   rename(log_LengthMatMin_unsexed = LengthMatMin_unsexed)
 
@@ -49,7 +49,7 @@ cols <- c("depth_min", "depth_max", "a", "b", "Length", "K", "LengthMax_unsexed"
 if (all(cols %in% colnames(species_traits_imputed))) {
   species_traits_imputed <- species_traits_imputed %>%
     mutate(across(all_of(cols), ~ log10(. + 1), .names = "log_{.col}")) %>%
-    select(-all_of(cols))  # Supprime les anciennes colonnes
+    dplyr::select(-all_of(cols))  # Supprime les anciennes colonnes
 }
   
 species_traits_imputed <- species_traits_imputed %>%
@@ -64,11 +64,11 @@ selected_traits <- c("log_Length", "Troph", "TempPrefMean", "Climate", 'log_K', 
 # Filtrer les données sans valeurs manquantes pour l’entraînement
 data_rf_known <- data_rf |>
   tidyr::drop_na(all_of(selected_traits), log_LengthMatMin_unsexed, Dims) %>%  # Supprime les lignes avec NA uniquement dans ces colonnes
-  select(all_of(selected_traits), log_LengthMatMin_unsexed, Dims, all_of(var_phylo)) #Species with known LengthMat and known predictors
+  dplyr::select(all_of(selected_traits), log_LengthMatMin_unsexed, Dims, all_of(var_phylo)) #Species with known LengthMat and known predictors
 data_rf_unknown <- data_rf[is.na(data_rf$log_LengthMatMin_unsexed), ] #Species with unknown maturity Length 
 data_rf_unknown <- data_rf_unknown %>% 
   tidyr::drop_na(all_of(selected_traits), Dims) %>% #but known predictors
-  select(all_of(selected_traits), Dims, all_of(var_phylo)) 
+  dplyr::select(all_of(selected_traits), Dims, all_of(var_phylo)) 
 
 ##-----------2. Evaluation des variables predictrices------------------------
 
@@ -281,6 +281,7 @@ LengthMatMin_u_predicted$LengthMatMin_unsexed <- pmin(
 
 save(LengthMatMin_u_predicted, file=here::here("Documents", "Sea_of_immaturity", "outputs", "RF2_log_LengthMat_predictions.Rdata"))
 
+load(file=here::here("Documents", "Sea_of_immaturity", "outputs", "RF2_log_LengthMat_predictions.Rdata"))
 ##-----------11. Search for causality-----------------------------------
 
 library(ape)
@@ -289,10 +290,10 @@ library(dplyr)
 library(vegan)
 
 ## Similarity based on maturity lengths
-pred_matrix <- as.matrix(pred_unknown)
+pred_matrix <- as.matrix(LengthMatMin_u_predicted$LengthMatMin_unsexed)
 dist_pred <- as.matrix (dist(pred_matrix))
-rownames(dist_pred) <- data_rf_unknown$species_name
-colnames(dist_pred) <- data_rf_unknown$species_name
+rownames(dist_pred) <- LengthMatMin_u_predicted$species_name
+colnames(dist_pred) <- LengthMatMin_u_predicted$species_name
 sim_pred <- 1 / (1 + dist_pred)
 
 pheatmap(sim_pred, 
@@ -311,9 +312,10 @@ clusters <- cutree(hc_rf, k = 5)
 species_clusters <- data.frame(Species = rownames(sim_matrix), Cluster = clusters)
 print(species_clusters)
 
+var_phylo <- c( 'Class', 'Order', 'Family', 'Genus', 'species_name')
 
 ## Similarity based on the phylogeny
-taxo_df <- data_rf_unknown %>%
+taxo_df <- LengthMatMin_u_predicted %>%
   select(all_of(var_phylo)) %>%
   na.omit()
 
@@ -344,16 +346,44 @@ phylo_sim_filtered <- phylo_sim[common_species, common_species]
 print(dim(sim_pred_filtered))
 print(dim(phylo_sim_filtered))
 
-
 ## Comparaison des matrices avec un test de Mantel
-mantel_test_sim <- vegan::mantel(sim_matrix_filtered, phylo_sim_filtered, method = "spearman")
+mantel_test_sim <- vegan::mantel(sim_pred_filtered, phylo_sim_filtered, method = "spearman")
 
 # Affichage des résultats
 print(mantel_test_sim)
+# mantel statistic r = 0.21
+#significance = 0.001
+
+#indice de pagel
+
+data_pagel <- data.frame(species_name = LengthMatMin_u_predicted[LengthMatMin_u_predicted$species_name%in% common_species,]$species_name, 
+                         trait = LengthMatMin_u_predicted[LengthMatMin_u_predicted$species_name%in% common_species,]$LengthMatMin_unsexed)
 
 
+tree <- ape::as.phylo(~Class/Order/Family/Genus/species_name, data = taxo_df)
+# Vérification et correction de l'arbre
+if (!is.rooted(tree)) {
+  tree <- root(tree, outgroup = tree$tip.label[1], resolve.root = TRUE)
+}
+tree <- multi2di(tree)  # Résolution des polytomies
 
+# Supprimer les labels des nœuds internes pour éviter les duplications
+tree$node.label <- NULL
 
+# Vérifier et attribuer des longueurs de branches si absentes
+if (is.null(tree$edge.length)) {
+  tree <- compute.brlen(tree, method = "Grafen")
+}
+
+# Conversion en compar.phylo (format requis par caper)
+comp_data <- comparative.data(tree, data_pagel, names.col = "species_name")
+
+# Calcul de lambda
+lambda_model <- pgls(trait ~ 1, data = comp_data, lambda = "ML")
+summary(lambda_model)
+
+#lambda = 0.953 la taille à maturité est très structurée par rapport à la phylogénie 
+save(lambda_model ,file = here::here("Documents","Sea_of_immaturity","outputs","lambda_model_RF2"))
 
 
 

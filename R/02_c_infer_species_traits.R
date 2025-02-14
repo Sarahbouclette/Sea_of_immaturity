@@ -136,7 +136,7 @@ test_dimensionality <- lapply(dimensions, FUN = function(dim){
   cat(dim, "dimensions:", "\n")
   
   if( dim == 0 ){
-    Dims <- paste0("Dim", 1:dim)
+    Dims <- paste0("Dim", 0)
     
     #No phylogeny
     traits_and_phylo <- species_traits_filtered
@@ -201,8 +201,7 @@ test_dimensionality <- lapply(dimensions, FUN = function(dim){
 #           "50 dim 06:16", "75 dim 07:35", "100 dim 10:05", "200 dim 13:05")
 
 results <- data.frame()
-
-for (i in 1:18) {
+for (i in 1:17) {
   traits_performance <- extract_model_perf(test_dimensionality[[i]])[[1]]
   traits_performance$iteration <- i 
   results <- bind_rows(results, traits_performance)  # Ajout correct des résultats
@@ -238,12 +237,12 @@ ggplot(resumed_data) +
         axis.title = element_text(size = 10),
         axis.text.x = element_text(size = 10))
   
-ggsave(filename = here::here("Documents","Sea_of_immaturity","figures", "02_c_phylogeny_importance_in_MF2_perf.jpg"),
+ggsave(filename = here::here("Documents","Sea_of_immaturity","figures", "02_c_phylogeny_importance_in_MF3_perf.jpg"),
        plot = last_plot(), width = 10, height =8 )
 
 
 ## Plot performance of prediction for each dimensionality ##
-dim = 100
+dim = 20
 res <- results_dimensionality |> dplyr::filter(dimensions == dim)
 # Estimate distributions (boxplot)
 boxplot_missforest <- estimates_boxplot(df_estimates = res)

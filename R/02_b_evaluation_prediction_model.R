@@ -22,8 +22,7 @@ library(ggplot2)
 
 extract_model_perf <- function(raw_result = model_eval_missforest){
   flat_list <- unlist(raw_result, recursive = F)
-  
-  
+
   ### Raw data ###
   raw_estimates_factor <- do.call(rbind, flat_list[seq(1, length(flat_list), 2)])
   raw_estimates_num <- do.call(rbind, flat_list[seq(2, length(flat_list), 2)])
